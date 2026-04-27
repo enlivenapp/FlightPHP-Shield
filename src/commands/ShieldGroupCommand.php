@@ -10,9 +10,8 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Commands;
 
-use Cycle\ORM\ORMInterface;
 use Enlivenapp\FlightShield\Authorization\Groups;
-use Enlivenapp\FlightShield\Entities\AuthGroup;
+use Enlivenapp\FlightShield\Models\AuthGroup;
 use flight\commands\AbstractBaseCommand;
 
 class ShieldGroupCommand extends AbstractBaseCommand
@@ -53,8 +52,7 @@ class ShieldGroupCommand extends AbstractBaseCommand
             return;
         }
 
-        $orm = $this->getOrm();
-        $groups = new Groups($orm);
+        $groups = new Groups(\Flight::db());
 
         match ($action) {
             'list'             => $this->listGroups($groups, $io),
@@ -100,8 +98,8 @@ class ShieldGroupCommand extends AbstractBaseCommand
         $io->write("Alias:       {$group->alias}", true);
         $io->write("Title:       {$group->title}", true);
         $io->write("Description: {$group->description}", true);
-        $io->write("Created:     " . ($group->created_at ? $group->created_at->format('Y-m-d H:i:s') : '-'), true);
-        $io->write("Updated:     " . ($group->updated_at ? $group->updated_at->format('Y-m-d H:i:s') : '-'), true);
+        $io->write("Created:     " . ($group->created_at ?? '-'), true);
+        $io->write("Updated:     " . ($group->updated_at ?? '-'), true);
 
         $perms = $groups->permissions($alias);
         $io->write("Permissions: " . (empty($perms) ? 'none' : implode(', ', $perms)), true);
@@ -125,9 +123,9 @@ class ShieldGroupCommand extends AbstractBaseCommand
             return;
         }
 
-        $group = new AuthGroup();
-        $group->alias = strtolower($alias);
-        $group->title = $title;
+        $group = new AuthGroup(\Flight::db());
+        $group->alias       = strtolower($alias);
+        $group->title       = $title;
         $group->description = $description;
 
         $groups->save($group);
@@ -240,10 +238,5 @@ class ShieldGroupCommand extends AbstractBaseCommand
 
         $groups->removePermission($alias, $permission);
         $io->info("Permission \"{$permission}\" removed from group \"{$alias}\".", true);
-    }
-
-    protected function getOrm(): ORMInterface
-    {
-        return \Flight::app()->orm();
     }
 }

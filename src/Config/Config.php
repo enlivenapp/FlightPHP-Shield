@@ -132,6 +132,7 @@ return [
         'login'             => '/auth/login',
         'logout'            => '/',
         'after_login'       => '/',
+        'after_login_admin' => '/admin',
         'after_register'    => '/',
         'after_logout'      => '/auth/login',
         'force_reset'       => '/auth/reset-password',

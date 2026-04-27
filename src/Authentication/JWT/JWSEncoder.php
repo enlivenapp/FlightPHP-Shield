@@ -40,11 +40,12 @@ class JWSEncoder
             $payload['iat'] = time();
         }
 
-        if (! isset($claims['exp'])) {
+        if (isset($claims['exp'])) {
+            // Explicit exp claim takes precedence
+            $payload['exp'] = $claims['exp'];
+        } else {
             $defaultTtl = $this->config['time_to_live'] ?? 3600;
             $payload['exp'] = $payload['iat'] + ($ttl ?? $defaultTtl);
-        } elseif ($ttl !== null) {
-            $payload['exp'] = $payload['iat'] + $ttl;
         }
 
         return $this->adapter->encode($payload, $keyset, $headers);

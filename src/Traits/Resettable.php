@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Traits;
 
-use Enlivenapp\FlightShield\Entities\UserIdentity;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 
 /**
  * Provides password reset enforcement methods.
@@ -20,16 +20,18 @@ trait Resettable
 {
     /**
      * Whether this user's email identity has force_reset set.
-     * Requires identities to be loaded or a repository lookup.
      */
     public function requiresPasswordReset(): bool
     {
-        foreach ($this->identities as $identity) {
-            if ($identity->type === UserIdentity::TYPE_EMAIL_PASSWORD) {
-                return $identity->force_reset;
-            }
+        $identity = new UserIdentity(\Flight::db());
+        $identity->eq('user_id', $this->id)
+                 ->eq('type', UserIdentity::TYPE_EMAIL_PASSWORD)
+                 ->find();
+
+        if (!$identity->isHydrated()) {
+            return false;
         }
 
-        return false;
+        return (bool) $identity->force_reset;
     }
 }

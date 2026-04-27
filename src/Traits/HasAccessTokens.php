@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Traits;
 
-use Enlivenapp\FlightShield\Entities\AccessToken;
+use Enlivenapp\FlightShield\Models\AccessToken;
 
 /**
  * Provides Personal Access Token methods.

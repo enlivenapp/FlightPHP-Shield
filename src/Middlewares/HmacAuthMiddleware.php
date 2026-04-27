@@ -32,8 +32,11 @@ class HmacAuthMiddleware
         $body = file_get_contents('php://input') ?: '';
 
         $result = $auth->getAuthenticator()->attempt([
-            'token' => $headerValue,
-            'body'  => $body,
+            'token'     => $headerValue,
+            'body'      => $body,
+            'timestamp' => $_SERVER['HTTP_X_REQUEST_TIMESTAMP'] ?? '',
+            'method'    => $_SERVER['REQUEST_METHOD'] ?? 'GET',
+            'path'      => $_SERVER['REQUEST_URI'] ?? '/',
         ]);
 
         if (! $result->isOK()) {

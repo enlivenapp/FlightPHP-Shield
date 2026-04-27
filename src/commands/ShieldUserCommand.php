@@ -10,12 +10,9 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Commands;
 
-use Cycle\ORM\EntityManager;
-use Enlivenapp\FlightShield\Entities\User;
-use Enlivenapp\FlightShield\Entities\UserIdentity;
+use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use Enlivenapp\FlightShield\Passwords\Passwords;
-use Enlivenapp\FlightShield\Repositories\UserIdentityRepository;
-use Enlivenapp\FlightShield\Repositories\UserRepository;
 use flight\commands\AbstractBaseCommand;
 
 class ShieldUserCommand extends AbstractBaseCommand
@@ -60,24 +57,22 @@ class ShieldUserCommand extends AbstractBaseCommand
             return;
         }
 
-        $orm = $this->getOrm();
-
         match ($action) {
-            'create'      => $this->createUser($orm, $io, $name, $email, $group),
-            'activate'    => $this->setActive($orm, $io, $name, $email, true),
-            'deactivate'  => $this->setActive($orm, $io, $name, $email, false),
-            'delete'      => $this->deleteUser($orm, $io, $name, $email),
-            'password'    => $this->changePassword($orm, $io, $name, $email),
-            'changename'  => $this->changeName($orm, $io, $name, $email, $newName),
-            'changeemail' => $this->changeEmail($orm, $io, $name, $email, $newEmail),
-            'list'        => $this->listUsers($orm, $io),
-            'addgroup'    => $this->modifyGroup($orm, $io, $name, $email, $group, 'add'),
-            'removegroup' => $this->modifyGroup($orm, $io, $name, $email, $group, 'remove'),
+            'create'      => $this->createUser($io, $name, $email, $group),
+            'activate'    => $this->setActive($io, $name, $email, true),
+            'deactivate'  => $this->setActive($io, $name, $email, false),
+            'delete'      => $this->deleteUser($io, $name, $email),
+            'password'    => $this->changePassword($io, $name, $email),
+            'changename'  => $this->changeName($io, $name, $email, $newName),
+            'changeemail' => $this->changeEmail($io, $name, $email, $newEmail),
+            'list'        => $this->listUsers($io),
+            'addgroup'    => $this->modifyGroup($io, $name, $email, $group, 'add'),
+            'removegroup' => $this->modifyGroup($io, $name, $email, $group, 'remove'),
             default       => $io->error("Unknown action: {$action}", true),
         };
     }
 
-    protected function createUser($orm, $io, ?string $name, ?string $email, ?string $group): void
+    protected function createUser($io, ?string $name, ?string $email, ?string $group): void
     {
         if ($name === null) {
             $io->write('Username: ', false);
@@ -107,63 +102,55 @@ class ShieldUserCommand extends AbstractBaseCommand
         $passwords = new Passwords();
         $hash = $passwords->hash($password);
 
-        $user = new User();
+        $user = new User(\Flight::db());
         $user->username   = $name ?: null;
         $user->active     = true;
-        $user->created_at = new \DateTimeImmutable();
-        $user->updated_at = new \DateTimeImmutable();
+        $user->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $user->insert();
 
-        $em = new EntityManager($orm);
-        $em->persist($user)->run();
+        $identity = new UserIdentity(\Flight::db());
+        $identity->user_id    = $user->id;
+        $identity->type       = UserIdentity::TYPE_EMAIL_PASSWORD;
+        $identity->secret     = $email;
+        $identity->secret2    = $hash;
+        $identity->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $identity->insert();
 
-        $identity = new UserIdentity();
-        $identity->user_id = $user->id;
-        $identity->type    = UserIdentity::TYPE_EMAIL_PASSWORD;
-        $identity->secret  = $email;
-        $identity->secret2 = $hash;
-        $identity->created_at = new \DateTimeImmutable();
-        $identity->updated_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($orm);
-        $em->persist($identity)->run();
-
-        $user->addGroup($group, $orm);
+        $user->addGroup($group);
 
         $io->info("User \"{$name}\" created and added to group \"{$group}\".", true);
     }
 
-    protected function setActive($orm, $io, ?string $name, ?string $email, bool $active): void
+    protected function setActive($io, ?string $name, ?string $email, bool $active): void
     {
-        $user = $this->findUser($orm, $io, $name, $email);
+        $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
-        $user->active = $active;
-        $user->updated_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($orm);
-        $em->persist($user)->run();
+        $user->active     = $active;
+        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $user->save();
 
         $status = $active ? 'activated' : 'deactivated';
         $io->info("User \"{$user->username}\" {$status}.", true);
     }
 
-    protected function deleteUser($orm, $io, ?string $name, ?string $email): void
+    protected function deleteUser($io, ?string $name, ?string $email): void
     {
-        $user = $this->findUser($orm, $io, $name, $email);
+        $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
-        $user->deleted_at = new \DateTimeImmutable();
-        $user->updated_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($orm);
-        $em->persist($user)->run();
+        $user->deleted_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $user->save();
 
         $io->info("User \"{$user->username}\" deleted (soft).", true);
     }
 
-    protected function changePassword($orm, $io, ?string $name, ?string $email): void
+    protected function changePassword($io, ?string $name, ?string $email): void
     {
-        $user = $this->findUser($orm, $io, $name, $email);
+        $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
         system('stty -echo');
@@ -182,27 +169,24 @@ class ShieldUserCommand extends AbstractBaseCommand
 
         $passwords = new Passwords();
 
-        /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $orm->getRepository(UserIdentity::class);
-        $identity = $identityRepo->getEmailIdentity($user);
+        $identityModel = new UserIdentity(\Flight::db());
+        $identity = $identityModel->getEmailIdentity($user);
 
         if ($identity === null) {
             $io->error('No email identity found for this user.', true);
             return;
         }
 
-        $identity->secret2 = $passwords->hash($password);
-        $identity->updated_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($orm);
-        $em->persist($identity)->run();
+        $identity->secret2    = $passwords->hash($password);
+        $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $identity->save();
 
         $io->info("Password updated for \"{$user->username}\".", true);
     }
 
-    protected function changeName($orm, $io, ?string $name, ?string $email, ?string $newName): void
+    protected function changeName($io, ?string $name, ?string $email, ?string $newName): void
     {
-        $user = $this->findUser($orm, $io, $name, $email);
+        $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
         if ($newName === null) {
@@ -211,18 +195,16 @@ class ShieldUserCommand extends AbstractBaseCommand
         }
 
         $oldName = $user->username;
-        $user->username = $newName;
-        $user->updated_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($orm);
-        $em->persist($user)->run();
+        $user->username   = $newName;
+        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $user->save();
 
         $io->info("Username changed from \"{$oldName}\" to \"{$newName}\".", true);
     }
 
-    protected function changeEmail($orm, $io, ?string $name, ?string $email, ?string $newEmail): void
+    protected function changeEmail($io, ?string $name, ?string $email, ?string $newEmail): void
     {
-        $user = $this->findUser($orm, $io, $name, $email);
+        $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
         if ($newEmail === null) {
@@ -230,9 +212,8 @@ class ShieldUserCommand extends AbstractBaseCommand
             return;
         }
 
-        /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $orm->getRepository(UserIdentity::class);
-        $identity = $identityRepo->getEmailIdentity($user);
+        $identityModel = new UserIdentity(\Flight::db());
+        $identity = $identityModel->getEmailIdentity($user);
 
         if ($identity === null) {
             $io->error('No email identity found for this user.', true);
@@ -240,20 +221,16 @@ class ShieldUserCommand extends AbstractBaseCommand
         }
 
         $oldEmail = $identity->secret;
-        $identity->secret = $newEmail;
-        $identity->updated_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($orm);
-        $em->persist($identity)->run();
+        $identity->secret     = $newEmail;
+        $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $identity->save();
 
         $io->info("Email changed from \"{$oldEmail}\" to \"{$newEmail}\".", true);
     }
 
-    protected function listUsers($orm, $io): void
+    protected function listUsers($io): void
     {
-        /** @var UserRepository $repo */
-        $repo = $orm->getRepository(User::class);
-        $users = $repo->select()->where('deleted_at', null)->fetchAll();
+        $users = (new User(\Flight::db()))->isNull('deleted_at')->findAll();
 
         $io->bold('ID	Username	Active', true);
         foreach ($users as $user) {
@@ -262,9 +239,9 @@ class ShieldUserCommand extends AbstractBaseCommand
         }
     }
 
-    protected function modifyGroup($orm, $io, ?string $name, ?string $email, ?string $group, string $action): void
+    protected function modifyGroup($io, ?string $name, ?string $email, ?string $group, string $action): void
     {
-        $user = $this->findUser($orm, $io, $name, $email);
+        $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
         if ($group === null) {
@@ -273,23 +250,22 @@ class ShieldUserCommand extends AbstractBaseCommand
         }
 
         if ($action === 'add') {
-            $user->addGroup($group, $orm);
+            $user->addGroup($group);
             $io->info("User \"{$user->username}\" added to group \"{$group}\".", true);
         } else {
-            $user->removeGroup($group, $orm);
+            $user->removeGroup($group);
             $io->info("User \"{$user->username}\" removed from group \"{$group}\".", true);
         }
     }
 
-    protected function findUser($orm, $io, ?string $name, ?string $email): ?User
+    protected function findUser($io, ?string $name, ?string $email): ?User
     {
-        /** @var UserRepository $repo */
-        $repo = $orm->getRepository(User::class);
+        $userModel = new User(\Flight::db());
 
         if ($name !== null) {
-            $user = $repo->findByCredentials(['username' => $name]);
+            $user = $userModel->findByCredentials(['username' => $name]);
         } elseif ($email !== null) {
-            $user = $repo->findByCredentials(['email' => $email]);
+            $user = $userModel->findByCredentials(['email' => $email]);
         } else {
             $io->error('Specify -n username or -e email.', true);
             return null;
@@ -300,10 +276,5 @@ class ShieldUserCommand extends AbstractBaseCommand
         }
 
         return $user;
-    }
-
-    protected function getOrm(): \Cycle\ORM\ORMInterface
-    {
-        return \Flight::app()->orm();
     }
 }

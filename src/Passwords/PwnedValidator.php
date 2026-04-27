@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Passwords;
 
-use Enlivenapp\FlightShield\Entities\User;
+use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Result;
 
 /**

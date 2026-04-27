@@ -6,11 +6,13 @@
  * @license   MIT
  */
 
+declare(strict_types=1);
+
 namespace Enlivenapp\FlightShield;
 
 use Enlivenapp\FlightShield\Authentication\Authentication;
 use Enlivenapp\FlightShield\Authentication\AuthenticatorInterface;
-use Enlivenapp\FlightShield\Entities\User;
+use Enlivenapp\FlightShield\Models\User;
 use flight\Engine;
 
 /**

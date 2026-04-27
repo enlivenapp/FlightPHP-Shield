@@ -11,9 +11,8 @@ declare(strict_types=1);
 namespace Enlivenapp\FlightShield\Authentication\Actions;
 
 use Enlivenapp\FlightShield\Authentication\Authenticators\Session;
-use Enlivenapp\FlightShield\Entities\User;
-use Enlivenapp\FlightShield\Entities\UserIdentity;
-use Enlivenapp\FlightShield\Repositories\UserIdentityRepository;
+use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use flight\Engine;
 
 class Email2FA implements ActionInterface
@@ -30,8 +29,15 @@ class Email2FA implements ActionInterface
             throw new \RuntimeException('Cannot get the pending login user.');
         }
 
-        $code = $this->createIdentity($user, $app);
-        $this->sendCodeEmail($user, $code, $app);
+        // Only send a new code if no unexpired one exists and we haven't already sent one this session
+        $identityModel = new UserIdentity(\Flight::db());
+        $existing = $identityModel->getIdentityByType($user, $this->type);
+
+        if ($existing === null || $existing->isExpired() || empty($_SESSION['2fa_code_sent'])) {
+            $code = $this->createIdentity($user, $app);
+            $this->sendCodeEmail($user, $code, $app);
+            $_SESSION['2fa_code_sent'] = true;
+        }
 
         return $app->view()->fetch('2fa_verify');
     }
@@ -44,6 +50,23 @@ class Email2FA implements ActionInterface
 
         if ($user === null) {
             throw new \RuntimeException('Cannot get the pending login user.');
+        }
+
+        // Server-side cooldown: reject resend if last code was created < 300 seconds ago
+        $identityModel = new UserIdentity(\Flight::db());
+        $existing = $identityModel->getIdentityByType($user, $this->type);
+
+        if ($existing !== null && $existing->created_at !== null) {
+            $createdAt = new \DateTimeImmutable($existing->created_at);
+            $elapsed = time() - $createdAt->getTimestamp();
+            if ($elapsed < 300) {
+                $remaining = 300 - $elapsed;
+                $m = intdiv($remaining, 60);
+                $s = $remaining % 60;
+                return $app->view()->fetch('2fa_verify', [
+                    'error' => "Please wait {$m}:" . str_pad((string) $s, 2, '0', STR_PAD_LEFT) . ' before requesting a new code.',
+                ]);
+            }
         }
 
         $code = $this->createIdentity($user, $app);
@@ -64,8 +87,12 @@ class Email2FA implements ActionInterface
         }
 
         /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $app->orm()->getRepository(UserIdentity::class);
-        $identity = $identityRepo->getIdentityByType($user, $this->type);
+        $identityModel = new UserIdentity(\Flight::db());
+        $identity = $identityModel->getIdentityByType($user, $this->type);
+
+        if ($identity === null) {
+            return $app->view()->fetch('2fa_verify', ['error' => 'No 2FA code found. Please log in again.']);
+        }
 
         if ($identity->isExpired()) {
             return $app->view()->fetch('2fa_verify', ['error' => 'The 2FA code has expired. Please log in again.']);
@@ -95,8 +122,8 @@ class Email2FA implements ActionInterface
         }
 
         /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $app->orm()->getRepository(\Enlivenapp\FlightShield\Entities\UserIdentity::class);
-        $identity = $identityRepo->getEmailIdentity($user);
+        $identityModel = new UserIdentity(\Flight::db());
+        $identity = $identityModel->getEmailIdentity($user);
         $to = $identity ? $identity->secret : '';
 
         $body = $app->view()->fetch('Email/email_2fa_email', [
@@ -112,17 +139,16 @@ class Email2FA implements ActionInterface
     public function createIdentity(User $user, Engine $app): string
     {
         /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $app->orm()->getRepository(UserIdentity::class);
+        $identityModel = new UserIdentity(\Flight::db());
 
-        $identityRepo->deleteIdentitiesByType($user, $this->type, $app->orm());
+        $identityModel->deleteIdentitiesByType($user, $this->type);
 
         $generator = static fn(): string => (string) random_int(100000, 999999);
 
-        return $identityRepo->createCodeIdentity(
+        return $identityModel->createCodeIdentity(
             $user,
             ['type' => $this->type, 'name' => 'login', 'extra' => 'Two-factor authentication required.'],
-            $generator,
-            $app->orm()
+            $generator
         );
     }
 }

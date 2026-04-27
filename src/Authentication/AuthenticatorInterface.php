@@ -8,7 +8,7 @@
 
 namespace Enlivenapp\FlightShield\Authentication;
 
-use Enlivenapp\FlightShield\Entities\User;
+use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Result;
 
 interface AuthenticatorInterface

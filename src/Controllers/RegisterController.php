@@ -10,11 +10,10 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Controllers;
 
-use Cycle\ORM\EntityManager;
-use Enlivenapp\FlightShield\Entities\User;
-use Enlivenapp\FlightShield\Entities\UserIdentity;
+use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use Enlivenapp\FlightShield\Passwords\Passwords;
-use Enlivenapp\FlightShield\Repositories\UserIdentityRepository;
+use Enlivenapp\FlightShield\Validation\ValidationRules;
 use flight\Engine;
 
 class RegisterController
@@ -60,93 +59,85 @@ class RegisterController
         $password = $data->password ?? '';
         $passConf = $data->password_confirm ?? '';
 
-        $errors = [];
+        // Validate input fields
+        $validator = new ValidationRules($this->config['passwords'] ?? []);
+        $errors = $validator->validate(
+            ['username' => $username, 'email' => $email, 'password' => $password, 'password_confirm' => $passConf],
+            $validator->getRegistrationRules()
+        );
 
-        if (empty($email)) {
-            $errors[] = 'Email is required.';
-        }
-
-        if ($password !== $passConf) {
-            $errors[] = 'Passwords do not match.';
-        }
-
-        // Run password through validators
+        // Run password through strength validators
         $passwords = new Passwords($this->config['passwords'] ?? []);
-
-        // Build a temp user for personal info checking
         $tempUser = new User();
         $tempUser->username = $username ?: null;
 
         $passResult = $passwords->check($password, $tempUser);
         if (! $passResult->isOK()) {
-            $errors[] = $passResult->reason();
+            $errors['password_strength'] = $passResult->reason();
         }
 
         if (! empty($errors)) {
             $this->app->render('register', [
-                'errors' => $errors,
+                'errors' => array_values($errors),
                 'config' => $this->config,
                 'old'    => ['email' => $email, 'username' => $username],
             ]);
             return;
         }
 
-        $orm = $this->app->orm();
-
-        // Check if email already exists
+        // Check if email already exists — show same success page either way
         /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $orm->getRepository(UserIdentity::class);
-        $existing = $identityRepo->getIdentityBySecret(UserIdentity::TYPE_EMAIL_PASSWORD, $email);
+        $identityModel = new UserIdentity(\Flight::db());
+        $existing = $identityModel->getIdentityBySecret(UserIdentity::TYPE_EMAIL_PASSWORD, $email);
 
         if ($existing !== null) {
-            $this->app->render('register', [
-                'errors' => ['An account with that email already exists.'],
-                'config' => $this->config,
-                'old'    => ['email' => $email, 'username' => $username],
-            ]);
+            // Send notice to the existing email address
+            $sender = $this->config['email_sender'] ?? null;
+            if ($sender !== null && is_callable($sender)) {
+                $body = $this->app->view()->fetch('Email/email_register_existing', [
+                    'ipAddress' => $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
+                    'date'      => date('Y-m-d H:i:s'),
+                ]);
+                $sender($email, 'Registration Attempt', $body);
+            }
+
+            $this->app->render('register_success', ['config' => $this->config]);
             return;
         }
 
-        // Create user
-        $user = new User();
-        $user->username   = $username ?: null;
-        $user->active     = true;
-        $user->created_at = new \DateTimeImmutable();
-        $user->updated_at = new \DateTimeImmutable();
+        // Create user — inactive when email activation is required
+        $actionClass = $this->config['actions']['register'] ?? null;
+        $requiresActivation = is_a($actionClass, \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator::class, true);
 
-        $em = new EntityManager($orm);
-        $em->persist($user)->run();
+        $user = new User(\Flight::db());
+        $user->username   = $username ?: null;
+        $user->active     = !$requiresActivation;
+        $user->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $user->insert();
 
         // Create email identity
-        $identityRepo->createEmailIdentity($user, [
+        $identityModel->createEmailIdentity($user, [
             'email'         => $email,
             'password_hash' => $passwords->hash($password),
-        ], $orm);
+        ]);
 
         // Add to default group
         $defaultGroup = $this->config['default_group'] ?? 'user';
-        $user->addGroup($defaultGroup, $orm);
+        $user->addGroup($defaultGroup);
 
         // Check for registration action (email activation)
-        $actionClass = $this->config['actions']['register'] ?? null;
         if ($actionClass !== null) {
             /** @var \Enlivenapp\FlightShield\Authentication\Authenticators\Session $authenticator */
             $authenticator = $this->app->auth()->setAuthenticator('session')->getAuthenticator();
             $authenticator->startAction($actionClass, $user);
-            if (is_a($actionClass, \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator::class, true)) {
-                $this->app->redirect('/auth/activate');
-            } elseif (is_a($actionClass, \Enlivenapp\FlightShield\Authentication\Actions\Email2FA::class, true)) {
-                $this->app->redirect('/auth/2fa');
-            } else {
-                $this->app->redirect('/');
-            }
-            return;
+        } else {
+            // Log them in
+            $this->app->auth()->login($user);
         }
 
-        // Log them in
-        $this->app->auth()->login($user);
-
-        $redirect = $this->config['redirects']['after_register'] ?? '/';
-        $this->app->redirect($redirect);
+        // Always show the same success page
+        $this->app->render('register_success', ['config' => $this->config]);
     }
 }

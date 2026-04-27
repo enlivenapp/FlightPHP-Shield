@@ -10,15 +10,12 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Authentication\Authenticators;
 
-use Cycle\ORM\EntityManager;
 use Enlivenapp\FlightShield\Authentication\AuthenticatorInterface;
-use Enlivenapp\FlightShield\Entities\AccessToken;
-use Enlivenapp\FlightShield\Entities\TokenLogin;
-use Enlivenapp\FlightShield\Entities\User;
-use Enlivenapp\FlightShield\Entities\UserIdentity;
+use Enlivenapp\FlightShield\Models\AccessToken;
+use Enlivenapp\FlightShield\Models\TokenLogin;
+use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use Enlivenapp\FlightShield\Exceptions\AuthenticationException;
-use Enlivenapp\FlightShield\Repositories\UserIdentityRepository;
-use Enlivenapp\FlightShield\Repositories\UserRepository;
 use Enlivenapp\FlightShield\Result;
 use flight\Engine;
 
@@ -29,6 +26,7 @@ class AccessTokens implements AuthenticatorInterface
     protected Engine $app;
     protected array $config;
     protected ?User $user = null;
+    protected bool $tokenChecked = false;
 
     public function __construct(Engine $app, array $config)
     {
@@ -75,9 +73,8 @@ class AccessTokens implements AuthenticatorInterface
             $rawToken = trim(substr($rawToken, 6));
         }
 
-        /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $this->app->orm()->getRepository(UserIdentity::class);
-        $identity = $identityRepo->getAccessTokenByRawToken($rawToken);
+        $identityModel = new UserIdentity(\Flight::db());
+        $identity = $identityModel->getAccessTokenByRawToken($rawToken);
 
         if ($identity === null) {
             return (new Result())
@@ -104,11 +101,10 @@ class AccessTokens implements AuthenticatorInterface
         }
 
         // Touch last_used_at
-        $identityRepo->touchIdentity($identity, $this->app->orm());
+        $identityModel->touchIdentity($identity);
 
-        /** @var UserRepository $userRepo */
-        $userRepo = $this->app->orm()->getRepository(User::class);
-        $user = $userRepo->findById($identity->user_id);
+        $userModel = new User(\Flight::db());
+        $user = $userModel->findById($identity->user_id);
 
         if ($user === null) {
             return (new Result())
@@ -130,10 +126,26 @@ class AccessTokens implements AuthenticatorInterface
             return true;
         }
 
+        if ($this->tokenChecked) {
+            return false;
+        }
+
+        $this->tokenChecked = true;
+
         $header = $this->config['token_header'] ?? 'Authorization';
         $headerValue = $_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $header))] ?? '';
 
-        return $this->attempt(['token' => $headerValue])->isOK();
+        $result = $this->check(['token' => $headerValue]);
+
+        if ($result->isOK()) {
+            $user = $result->extraInfo();
+            if (!$user->isBanned()) {
+                $this->login($user);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function login(User $user): void
@@ -143,9 +155,8 @@ class AccessTokens implements AuthenticatorInterface
 
     public function loginById(int|string $userId): void
     {
-        /** @var UserRepository $userRepo */
-        $userRepo = $this->app->orm()->getRepository(User::class);
-        $user = $userRepo->findById($userId);
+        $userModel = new User(\Flight::db());
+        $user = $userModel->findById($userId);
 
         if ($user === null) {
             throw AuthenticationException::forInvalidUser();
@@ -170,9 +181,8 @@ class AccessTokens implements AuthenticatorInterface
             return;
         }
 
-        $this->user->last_active = new \DateTimeImmutable();
-        $em = new EntityManager($this->app->orm());
-        $em->persist($this->user)->run();
+        $this->user->last_active = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $this->user->save();
     }
 
     protected function recordTokenLogin(string $identifier, bool $success, ?int $userId = null): void
@@ -186,16 +196,14 @@ class AccessTokens implements AuthenticatorInterface
             return;
         }
 
-        $login = new TokenLogin();
+        $login = new TokenLogin(\Flight::db());
         $login->id_type    = self::ID_TYPE_ACCESS_TOKEN;
         $login->identifier = $identifier;
         $login->success    = $success;
         $login->user_id    = $userId;
         $login->ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         $login->user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-        $login->date       = new \DateTimeImmutable();
-
-        $em = new EntityManager($this->app->orm());
-        $em->persist($login)->run();
+        $login->date       = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $login->insert();
     }
 }

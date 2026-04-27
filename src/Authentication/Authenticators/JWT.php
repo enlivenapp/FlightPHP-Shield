@@ -10,13 +10,11 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Authentication\Authenticators;
 
-use Cycle\ORM\EntityManager;
 use Enlivenapp\FlightShield\Authentication\AuthenticatorInterface;
 use Enlivenapp\FlightShield\Authentication\JWTManager;
-use Enlivenapp\FlightShield\Entities\TokenLogin;
-use Enlivenapp\FlightShield\Entities\User;
+use Enlivenapp\FlightShield\Models\TokenLogin;
+use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Exceptions\AuthenticationException;
-use Enlivenapp\FlightShield\Repositories\UserRepository;
 use Enlivenapp\FlightShield\Result;
 use flight\Engine;
 use stdClass;
@@ -32,6 +30,7 @@ class JWT implements AuthenticatorInterface
     protected Engine $app;
     protected array $config;
     protected ?User $user = null;
+    protected bool $tokenChecked = false;
     protected ?JWTManager $jwtManager = null;
     protected ?stdClass $payload = null;
     protected string $keyset = 'default';
@@ -102,8 +101,8 @@ class JWT implements AuthenticatorInterface
         }
 
         /** @var UserRepository $userRepo */
-        $userRepo = $this->app->orm()->getRepository(User::class);
-        $user = $userRepo->findById($userId);
+        $userModel = new User(\Flight::db());
+        $user = $userModel->findById($userId);
 
         if ($user === null) {
             return (new Result())
@@ -122,9 +121,24 @@ class JWT implements AuthenticatorInterface
             return true;
         }
 
-        $token = $this->getTokenFromHeader();
+        if ($this->tokenChecked) {
+            return false;
+        }
 
-        return $this->attempt(['token' => $token])->isOK();
+        $this->tokenChecked = true;
+
+        $token = $this->getTokenFromHeader();
+        $result = $this->check(['token' => $token]);
+
+        if ($result->isOK()) {
+            $user = $result->extraInfo();
+            if (!$user->isBanned()) {
+                $this->login($user);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function login(User $user): void
@@ -134,8 +148,8 @@ class JWT implements AuthenticatorInterface
 
     public function loginById(int|string $userId): void
     {
-        $userRepo = $this->app->orm()->getRepository(User::class);
-        $user = $userRepo->findById($userId);
+        $userModel = new User(\Flight::db());
+        $user = $userModel->findById($userId);
 
         if ($user === null) {
             throw AuthenticationException::forInvalidUser();
@@ -161,9 +175,8 @@ class JWT implements AuthenticatorInterface
             return;
         }
 
-        $this->user->last_active = new \DateTimeImmutable();
-        $em = new EntityManager($this->app->orm());
-        $em->persist($this->user)->run();
+        $this->user->last_active = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $this->user->save();
     }
 
     public function getPayload(): ?stdClass
@@ -217,16 +230,14 @@ class JWT implements AuthenticatorInterface
             return;
         }
 
-        $login = new TokenLogin();
+        $login = new TokenLogin(\Flight::db());
         $login->id_type    = self::ID_TYPE_JWT;
         $login->identifier = $identifier;
         $login->success    = $success;
         $login->user_id    = $userId;
         $login->ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         $login->user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-        $login->date       = new \DateTimeImmutable();
-
-        $em = new EntityManager($this->app->orm());
-        $em->persist($login)->run();
+        $login->date       = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $login->insert();
     }
 }

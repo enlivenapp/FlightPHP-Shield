@@ -11,9 +11,8 @@ declare(strict_types=1);
 namespace Enlivenapp\FlightShield\Authentication\Actions;
 
 use Enlivenapp\FlightShield\Authentication\Authenticators\Session;
-use Enlivenapp\FlightShield\Entities\User;
-use Enlivenapp\FlightShield\Entities\UserIdentity;
-use Enlivenapp\FlightShield\Repositories\UserIdentityRepository;
+use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use flight\Engine;
 
 class EmailActivator implements ActionInterface
@@ -54,8 +53,12 @@ class EmailActivator implements ActionInterface
         }
 
         /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $app->orm()->getRepository(UserIdentity::class);
-        $identity = $identityRepo->getIdentityByType($user, $this->type);
+        $identityModel = new UserIdentity(\Flight::db());
+        $identity = $identityModel->getIdentityByType($user, $this->type);
+
+        if ($identity === null) {
+            return $app->view()->fetch('activate', ['error' => 'No activation token found. Please register again.']);
+        }
 
         if ($identity->isExpired()) {
             return $app->view()->fetch('activate', ['error' => 'The activation token has expired. Please register again.']);
@@ -67,8 +70,7 @@ class EmailActivator implements ActionInterface
 
         // Activate the user
         $user->activate();
-        $em = new \Cycle\ORM\EntityManager($app->orm());
-        $em->persist($user)->run();
+        $user->save();
 
         $redirect = $app->get('enlivenapp.flight-shield')['redirects']['after_register'] ?? '/';
         $app->redirect($redirect);
@@ -90,13 +92,12 @@ class EmailActivator implements ActionInterface
         }
 
         /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $app->orm()->getRepository(UserIdentity::class);
-        $identity = $identityRepo->getEmailIdentity($user);
+        $identityModel = new UserIdentity(\Flight::db());
+        $identity = $identityModel->getEmailIdentity($user);
         $to = $identity ? $identity->secret : '';
 
-        $activationUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
-            . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
-            . '/auth/activate/verify?token=' . urlencode($code);
+        $baseUrl = rtrim($app->get('flight.base_url') ?? '', '/');
+        $activationUrl = $baseUrl . '/auth/activate/verify?token=' . urlencode($code);
 
         $body = $app->view()->fetch('Email/email_activate_email', [
             'activationUrl' => $activationUrl,
@@ -111,13 +112,13 @@ class EmailActivator implements ActionInterface
     public function createIdentity(User $user, Engine $app): string
     {
         /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $app->orm()->getRepository(UserIdentity::class);
+        $identityModel = new UserIdentity(\Flight::db());
 
-        $identityRepo->deleteIdentitiesByType($user, $this->type, $app->orm());
+        $identityModel->deleteIdentitiesByType($user, $this->type);
 
-        $generator = static fn(): string => (string) random_int(100000, 999999);
+        $generator = static fn(): string => bin2hex(random_bytes(20));
 
-        return $identityRepo->createCodeIdentity(
+        return $identityModel->createCodeIdentity(
             $user,
             [
                 'type'    => $this->type,
@@ -125,8 +126,7 @@ class EmailActivator implements ActionInterface
                 'extra'   => 'Email verification required.',
                 'expires' => new \DateTimeImmutable('+24 hours'),
             ],
-            $generator,
-            $app->orm()
+            $generator
         );
     }
 }

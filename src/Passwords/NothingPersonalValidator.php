@@ -10,7 +10,8 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Passwords;
 
-use Enlivenapp\FlightShield\Entities\User;
+use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use Enlivenapp\FlightShield\Result;
 
 /**
@@ -48,12 +49,13 @@ class NothingPersonalValidator extends BaseValidator implements ValidatorInterfa
     {
         $userName = strtolower($user->username ?? '');
 
-        // Get email from identities if loaded
+        // Get email from DB for persisted users
         $email = '';
-        foreach ($user->identities as $identity) {
-            if ($identity->type === 'email_password') {
-                $email = strtolower($identity->secret);
-                break;
+        if ($user->isHydrated()) {
+            $identityModel = new UserIdentity(\Flight::db());
+            $emailIdentity = $identityModel->getEmailIdentity($user);
+            if ($emailIdentity !== null) {
+                $email = strtolower($emailIdentity->secret);
             }
         }
 

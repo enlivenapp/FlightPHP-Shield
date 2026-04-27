@@ -38,8 +38,13 @@ class ChainAuthMiddleware
             }
         }
 
-        $loginUrl = $config['redirects']['login'] ?? '/auth/login';
-        $this->app->redirect($loginUrl);
+        $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+        if (str_contains($accept, 'application/json')) {
+            $this->app->json(['message' => 'Unauthorized'], 401);
+        } else {
+            $loginUrl = $config['redirects']['login'] ?? '/auth/login';
+            $this->app->redirect($loginUrl);
+        }
         return;
     }
 }

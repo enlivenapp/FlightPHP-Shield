@@ -12,7 +12,7 @@ namespace Enlivenapp\FlightShield\Authentication;
 
 use Enlivenapp\FlightShield\Authentication\JWT\JWSDecoder;
 use Enlivenapp\FlightShield\Authentication\JWT\JWSEncoder;
-use Enlivenapp\FlightShield\Entities\User;
+use Enlivenapp\FlightShield\Models\User;
 use stdClass;
 
 class JWTManager

@@ -10,7 +10,8 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Middlewares;
 
-use Enlivenapp\FlightShield\Entities\Login;
+use Enlivenapp\FlightShield\Models\Login;
+use Enlivenapp\FlightShield\Models\TokenLogin;
 use flight\Engine;
 
 /**
@@ -48,38 +49,38 @@ class RateLimitMiddleware
         $decayMinutes   = (int) ($rl['decay_minutes']   ?? 30);
         $lockoutMinutes = (int) ($rl['lockout_minutes'] ?? 30);
 
-        $ip      = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-        $since   = new \DateTimeImmutable("-{$decayMinutes} minutes");
+        $ip    = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $since = (new \DateTimeImmutable("-{$decayMinutes} minutes"))->format('Y-m-d H:i:s');
 
-        /** @var \Cycle\ORM\Select\Repository $loginRepo */
-        $loginRepo = $this->app->orm()->getRepository(Login::class);
+        $db         = \Flight::db();
+        $loginModel = new Login($db);
+        $tokenModel = new TokenLogin($db);
 
-        $recentFailures = $loginRepo->select()
-            ->where('ip_address', $ip)
-            ->where('success', false)
-            ->where('date', '>=', $since->format('Y-m-d H:i:s'))
-            ->count();
+        // Count failures across both session and token login tables
+        $recentFailures = $loginModel->countRecentFailuresByIp($ip, $since)
+                        + $tokenModel->countRecentFailuresByIp($ip, $since);
 
         if ($recentFailures < $maxAttempts) {
             return;
         }
 
         // Threshold reached — check if the most recent failure is still within the lockout window
-        /** @var Login|null $latest */
-        $latest = $loginRepo->select()
-            ->where('ip_address', $ip)
-            ->where('success', false)
-            ->orderBy('date', 'DESC')
-            ->limit(1)
-            ->fetchOne();
+        $loginLatest = $loginModel->latestFailureDateByIp($ip);
+        $tokenLatest = $tokenModel->latestFailureDateByIp($ip);
 
-        if ($latest === null) {
+        $latestDate = $loginLatest;
+        if ($tokenLatest !== null && ($latestDate === null || $tokenLatest > $latestDate)) {
+            $latestDate = $tokenLatest;
+        }
+
+        if ($latestDate === null) {
             return;
         }
 
-        $lockoutCutoff = new \DateTimeImmutable("-{$lockoutMinutes} minutes");
+        $lockoutCutoff = (new \DateTimeImmutable("-{$lockoutMinutes} minutes"))->format('Y-m-d H:i:s');
 
-        if ($latest->date >= $lockoutCutoff) {
+        if ($latestDate >= $lockoutCutoff) {
+            header('Retry-After: ' . ($lockoutMinutes * 60));
             $this->app->halt(429, json_encode([
                 'error' => 'Too many attempts. Please try again later.',
             ]));

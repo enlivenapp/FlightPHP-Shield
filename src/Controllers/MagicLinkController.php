@@ -10,12 +10,10 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Controllers;
 
-use Cycle\ORM\EntityManager;
 use Enlivenapp\FlightShield\Authentication\Authenticators\Session;
-use Enlivenapp\FlightShield\Entities\Login;
-use Enlivenapp\FlightShield\Entities\UserIdentity;
-use Enlivenapp\FlightShield\Repositories\UserIdentityRepository;
-use Enlivenapp\FlightShield\Repositories\UserRepository;
+use Enlivenapp\FlightShield\Models\Login;
+use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use flight\Engine;
 
 class MagicLinkController
@@ -54,8 +52,8 @@ class MagicLinkController
         $email = trim($this->app->request()->data->email ?? '');
 
         /** @var UserRepository $userRepo */
-        $userRepo = $this->app->orm()->getRepository(\Enlivenapp\FlightShield\Entities\User::class);
-        $user = $userRepo->findByCredentials(['email' => $email]);
+        $userModel = new User(\Flight::db());
+        $user = $userModel->findByCredentials(['email' => $email]);
 
         if ($user === null) {
             $this->app->render('magic_link_message', ['config' => $this->config]);
@@ -63,34 +61,32 @@ class MagicLinkController
         }
 
         /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $this->app->orm()->getRepository(UserIdentity::class);
+        $identityModel = new UserIdentity(\Flight::db());
 
         // Delete previous magic link identities
-        $identityRepo->deleteIdentitiesByType($user, UserIdentity::TYPE_MAGIC_LINK, $this->app->orm());
+        $identityModel->deleteIdentitiesByType($user, UserIdentity::TYPE_MAGIC_LINK);
 
         // Generate token
         $token = bin2hex(random_bytes(20));
         $lifetime = $this->config['magic_link_lifetime'] ?? 3600;
 
-        $identity = new UserIdentity();
+        $identity = new UserIdentity(\Flight::db());
         $identity->user_id = $user->id;
         $identity->type    = UserIdentity::TYPE_MAGIC_LINK;
         $identity->secret  = hash('sha256', $token);
-        $identity->expires = new \DateTimeImmutable("+{$lifetime} seconds");
-        $identity->created_at = new \DateTimeImmutable();
-        $identity->updated_at = new \DateTimeImmutable();
+        $identity->expires = (new \DateTimeImmutable("+{$lifetime} seconds"))->format('Y-m-d H:i:s');
+        $identity->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $em = new EntityManager($this->app->orm());
-        $em->persist($identity)->run();
+        $identity->insert();
 
         $sender = $this->config['email_sender'] ?? null;
         if ($sender !== null && is_callable($sender)) {
-            $emailIdentity = $identityRepo->getEmailIdentity($user);
+            $emailIdentity = $identityModel->getEmailIdentity($user);
             $to = $emailIdentity ? $emailIdentity->secret : '';
 
-            $magicLinkUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
-                . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
-                . '/auth/magic-link/verify?token=' . urlencode($token);
+            $baseUrl = rtrim($this->app->get('flight.base_url') ?? '', '/');
+            $magicLinkUrl = $baseUrl . '/auth/magic-link/verify?token=' . urlencode($token);
 
             $body = $this->app->view()->fetch('Email/magic_link_email', [
                 'magicLinkUrl' => $magicLinkUrl,
@@ -115,8 +111,8 @@ class MagicLinkController
         $token = $this->app->request()->query->token ?? '';
 
         /** @var UserIdentityRepository $identityRepo */
-        $identityRepo = $this->app->orm()->getRepository(UserIdentity::class);
-        $identity = $identityRepo->getIdentityBySecret(UserIdentity::TYPE_MAGIC_LINK, hash('sha256', $token));
+        $identityModel = new UserIdentity(\Flight::db());
+        $identity = $identityModel->getIdentityBySecret(UserIdentity::TYPE_MAGIC_LINK, hash('sha256', $token));
 
         if ($identity === null) {
             $this->recordMagicLinkLogin($token, false);
@@ -125,8 +121,7 @@ class MagicLinkController
         }
 
         // Delete the identity so it can't be reused
-        $em = new EntityManager($this->app->orm());
-        $em->delete($identity)->run();
+        $identity->delete();
 
         // Expired?
         if ($identity->isExpired()) {
@@ -135,9 +130,15 @@ class MagicLinkController
             return;
         }
 
-        /** @var \Enlivenapp\FlightShield\Repositories\UserRepository $userRepo */
-        $userRepo = $this->app->orm()->getRepository(\Enlivenapp\FlightShield\Entities\User::class);
-        $user = $userRepo->findById($identity->user_id);
+        /** @var UserRepository $userRepo */
+        $userModel = new User(\Flight::db());
+        $user = $userModel->findById($identity->user_id);
+
+        if ($user === null) {
+            $this->recordMagicLinkLogin($token, false);
+            $this->app->redirect($this->config['redirects']['login'] ?? '/auth/login');
+            return;
+        }
 
         if ($user->isBanned()) {
             $this->app->redirect($this->config['redirects']['login'] ?? '/auth/login');
@@ -167,16 +168,15 @@ class MagicLinkController
             return;
         }
 
-        $login = new Login();
+        $login = new Login(\Flight::db());
         $login->id_type    = UserIdentity::TYPE_MAGIC_LINK;
         $login->identifier = hash('sha256', $identifier);
         $login->success    = $success;
         $login->user_id    = $userId;
         $login->ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         $login->user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-        $login->date       = new \DateTimeImmutable();
+        $login->date       = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $em = new EntityManager($this->app->orm());
-        $em->persist($login)->run();
+        $login->insert();
     }
 }

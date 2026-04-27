@@ -14,7 +14,7 @@
  * Routes:
  *   GET  /auth/login              - Show login form
  *   POST /auth/login              - Process login
- *   GET  /auth/logout             - Logout
+ *   POST /auth/logout             - Logout
  *   GET  /auth/register           - Show registration form
  *   POST /auth/register           - Process registration
  *   GET  /auth/magic-link         - Show magic link form
@@ -46,9 +46,9 @@ $router->post('/login', function () use ($app, $configPrepend) {
     (new LoginController($app, $configPrepend))->processLogin();
 })->addMiddleware(new CsrfMiddleware($app))->addMiddleware(new RateLimitMiddleware($app));
 
-$router->get('/logout', function () use ($app, $configPrepend) {
+$router->post('/logout', function () use ($app, $configPrepend) {
     (new LoginController($app, $configPrepend))->logout();
-});
+})->addMiddleware(new CsrfMiddleware($app));
 
 // Registration
 $router->get('/register', function () use ($app, $configPrepend) {
@@ -57,7 +57,7 @@ $router->get('/register', function () use ($app, $configPrepend) {
 
 $router->post('/register', function () use ($app, $configPrepend) {
     (new RegisterController($app, $configPrepend))->processRegister();
-})->addMiddleware(new CsrfMiddleware($app));
+})->addMiddleware(new CsrfMiddleware($app))->addMiddleware(new RateLimitMiddleware($app));
 
 // Magic Link
 $router->get('/magic-link', function () use ($app, $configPrepend) {
@@ -122,4 +122,4 @@ $router->get('/activate/verify', function () use ($app) {
         return;
     }
     echo $action->verify($app);
-});
+})->addMiddleware(new RateLimitMiddleware($app));

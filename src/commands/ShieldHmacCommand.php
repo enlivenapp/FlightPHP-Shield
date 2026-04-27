@@ -10,9 +10,8 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Commands;
 
-use Cycle\ORM\EntityManager;
 use Enlivenapp\FlightShield\Authentication\HMAC\HmacEncrypter;
-use Enlivenapp\FlightShield\Entities\UserIdentity;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use Enlivenapp\FlightShield\Exceptions\RuntimeException;
 use flight\commands\AbstractBaseCommand;
 
@@ -58,7 +57,6 @@ class ShieldHmacCommand extends AbstractBaseCommand
             return;
         }
 
-        $orm = $this->getOrm();
         $config = $this->getShieldConfig();
 
         try {
@@ -67,10 +65,10 @@ class ShieldHmacCommand extends AbstractBaseCommand
                 'listkeys'      => $this->listKeys($config, $io),
                 'addkey'        => $this->addKey($config, $io),
                 'removekey'     => $this->removeKey($config, $io, $key),
-                'encrypt'       => $this->encryptAll($orm, $config, $io),
-                'decrypt'       => $this->decryptAll($orm, $config, $io),
-                'reencrypt'     => $this->reEncryptAll($orm, $config, $io),
-                'invalidateAll' => $this->invalidateAll($orm, $io),
+                'encrypt'       => $this->encryptAll($config, $io),
+                'decrypt'       => $this->decryptAll($config, $io),
+                'reencrypt'     => $this->reEncryptAll($config, $io),
+                'invalidateAll' => $this->invalidateAll($io),
                 default         => $io->error("Unknown action: {$action}", true),
             };
         } catch (RuntimeException $e) {
@@ -250,11 +248,10 @@ class ShieldHmacCommand extends AbstractBaseCommand
         return true;
     }
 
-    protected function encryptAll($orm, array $config, $io): void
+    protected function encryptAll(array $config, $io): void
     {
-        $encrypter = new HmacEncrypter($config);
-        $repo = $orm->getRepository(UserIdentity::class);
-        $identities = $repo->select()->where('type', UserIdentity::TYPE_HMAC_TOKEN)->fetchAll();
+        $encrypter  = new HmacEncrypter($config);
+        $identities = (new UserIdentity(\Flight::db()))->eq('type', UserIdentity::TYPE_HMAC_TOKEN)->findAll();
 
         foreach ($identities as $identity) {
             if ($encrypter->isEncrypted($identity->secret2)) {
@@ -263,17 +260,15 @@ class ShieldHmacCommand extends AbstractBaseCommand
             }
 
             $identity->secret2 = $encrypter->encrypt($identity->secret2);
-            $em = new EntityManager($orm);
-            $em->persist($identity)->run();
+            $identity->save();
             $io->info("id: {$identity->id}, encrypted.", true);
         }
     }
 
-    protected function decryptAll($orm, array $config, $io): void
+    protected function decryptAll(array $config, $io): void
     {
-        $encrypter = new HmacEncrypter($config);
-        $repo = $orm->getRepository(UserIdentity::class);
-        $identities = $repo->select()->where('type', UserIdentity::TYPE_HMAC_TOKEN)->fetchAll();
+        $encrypter  = new HmacEncrypter($config);
+        $identities = (new UserIdentity(\Flight::db()))->eq('type', UserIdentity::TYPE_HMAC_TOKEN)->findAll();
 
         foreach ($identities as $identity) {
             if (! $encrypter->isEncrypted($identity->secret2)) {
@@ -282,17 +277,15 @@ class ShieldHmacCommand extends AbstractBaseCommand
             }
 
             $identity->secret2 = $encrypter->decrypt($identity->secret2);
-            $em = new EntityManager($orm);
-            $em->persist($identity)->run();
+            $identity->save();
             $io->info("id: {$identity->id}, decrypted.", true);
         }
     }
 
-    protected function reEncryptAll($orm, array $config, $io): void
+    protected function reEncryptAll(array $config, $io): void
     {
-        $encrypter = new HmacEncrypter($config);
-        $repo = $orm->getRepository(UserIdentity::class);
-        $identities = $repo->select()->where('type', UserIdentity::TYPE_HMAC_TOKEN)->fetchAll();
+        $encrypter  = new HmacEncrypter($config);
+        $identities = (new UserIdentity(\Flight::db()))->eq('type', UserIdentity::TYPE_HMAC_TOKEN)->findAll();
 
         foreach ($identities as $identity) {
             if ($encrypter->isEncryptedWithCurrentKey($identity->secret2)) {
@@ -303,18 +296,16 @@ class ShieldHmacCommand extends AbstractBaseCommand
             $identity->secret2 = $encrypter->encrypt(
                 $encrypter->decrypt($identity->secret2)
             );
-            $em = new EntityManager($orm);
-            $em->persist($identity)->run();
+            $identity->save();
             $io->info("id: {$identity->id}, re-encrypted.", true);
         }
     }
 
-    protected function invalidateAll($orm, $io): void
+    protected function invalidateAll($io): void
     {
-        $repo = $orm->getRepository(UserIdentity::class);
-        $identities = $repo->select()->where('type', UserIdentity::TYPE_HMAC_TOKEN)->fetchAll();
+        $identities = (new UserIdentity(\Flight::db()))->eq('type', UserIdentity::TYPE_HMAC_TOKEN)->findAll();
 
-        $now = new \DateTimeImmutable();
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
 
         foreach ($identities as $identity) {
             if ($identity->expires !== null && $identity->expires < $now) {
@@ -323,15 +314,9 @@ class ShieldHmacCommand extends AbstractBaseCommand
             }
 
             $identity->expires = $now;
-            $em = new EntityManager($orm);
-            $em->persist($identity)->run();
+            $identity->save();
             $io->info("id: {$identity->id}, set as expired.", true);
         }
-    }
-
-    protected function getOrm(): \Cycle\ORM\ORMInterface
-    {
-        return \Flight::app()->orm();
     }
 
     protected function getShieldConfig(): array

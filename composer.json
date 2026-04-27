@@ -26,5 +26,18 @@
         "files": [
             "src/Helpers/auth_helper.php"
         ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Enlivenapp\\FlightShield\\Tests\\": "tests/"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "enlivenapp/flight-school": true
+        }
     }
 }

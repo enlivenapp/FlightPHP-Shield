@@ -10,17 +10,13 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Authentication\Authenticators;
 
-use Cycle\ORM\EntityManager;
 use Enlivenapp\FlightShield\Authentication\AuthenticatorInterface;
-use Enlivenapp\FlightShield\Entities\Login;
-use Enlivenapp\FlightShield\Entities\RememberToken;
-use Enlivenapp\FlightShield\Entities\User;
-use Enlivenapp\FlightShield\Entities\UserIdentity;
+use Enlivenapp\FlightShield\Models\Login;
+use Enlivenapp\FlightShield\Models\RememberToken;
+use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use Enlivenapp\FlightShield\Exceptions\AuthenticationException;
 use Enlivenapp\FlightShield\Passwords\Passwords;
-use Enlivenapp\FlightShield\Repositories\RememberTokenRepository;
-use Enlivenapp\FlightShield\Repositories\UserIdentityRepository;
-use Enlivenapp\FlightShield\Repositories\UserRepository;
 use Enlivenapp\FlightShield\Result;
 use flight\Engine;
 
@@ -73,29 +69,28 @@ class Session implements AuthenticatorInterface
             $this->recordLogin($credentials, false, $user->id);
             return (new Result())
                 ->setSuccess(false)
-                ->setReason('User is banned: ' . ($user->getBanMessage() ?? ''));
+                ->setReason('Invalid credentials.');
         }
 
         if (! $user->isActivated()) {
             $this->recordLogin($credentials, false, $user->id);
             return (new Result())
                 ->setSuccess(false)
-                ->setReason('User account is not active.');
+                ->setReason('Invalid credentials.');
         }
 
         // Rehash password if needed
-        $identityRepo = $this->getIdentityRepository();
+        $identityRepo = $this->getIdentityModel();
         $identity = $identityRepo->getEmailIdentity($user);
 
         if ($identity && $this->passwords->needsRehash($identity->secret2)) {
             $identity->secret2 = $this->passwords->hash($credentials['password']);
-            $identity->updated_at = new \DateTimeImmutable();
-            $em = new EntityManager($this->getOrm());
-            $em->persist($identity)->run();
+            $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            $identity->save();
         }
 
         if ($identity) {
-            $identityRepo->touchIdentity($identity, $this->getOrm());
+            $identityRepo->touchIdentity($identity);
         }
 
         // Check for login action (2FA, activation)
@@ -114,7 +109,7 @@ class Session implements AuthenticatorInterface
 
     public function check(array $credentials): Result
     {
-        $userRepo = $this->getUserRepository();
+        $userRepo = $this->getUserModel();
         $user = $userRepo->findByCredentials($credentials);
 
         if ($user === null) {
@@ -129,7 +124,7 @@ class Session implements AuthenticatorInterface
                 ->setReason('Password is required.');
         }
 
-        $identityRepo = $this->getIdentityRepository();
+        $identityRepo = $this->getIdentityModel();
         $identity = $identityRepo->getEmailIdentity($user);
 
         if ($identity === null || $identity->secret2 === null) {
@@ -162,7 +157,7 @@ class Session implements AuthenticatorInterface
 
     public function loginById(int|string $userId): void
     {
-        $user = $this->getUserRepository()->findById($userId);
+        $user = $this->getUserModel()->findById($userId);
 
         if ($user === null) {
             throw AuthenticationException::forInvalidUser();
@@ -178,8 +173,8 @@ class Session implements AuthenticatorInterface
         // Remove remember-me token
         $cookieName = $this->config['session']['remember_cookie_name'] ?? 'remember';
         if (isset($_COOKIE[$cookieName]) && $this->user) {
-            $rememberRepo = $this->getRememberRepository();
-            $rememberRepo->deleteByUser($this->user->id, $this->getOrm());
+            $rememberRepo = $this->getRememberModel();
+            $rememberRepo->deleteByUser($this->user->id);
             $this->clearCookie($cookieName);
         }
 
@@ -221,9 +216,8 @@ class Session implements AuthenticatorInterface
             return;
         }
 
-        $this->user->last_active = new \DateTimeImmutable();
-        $em = new EntityManager($this->getOrm());
-        $em->persist($this->user)->run();
+        $this->user->last_active = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $this->user->save();
     }
 
     // -----------------------------------------------------------------
@@ -238,7 +232,7 @@ class Session implements AuthenticatorInterface
             return null;
         }
 
-        return $this->getUserRepository()->findById($_SESSION[$sessionField]);
+        return $this->getUserModel()->findById($_SESSION[$sessionField]);
     }
 
     public function isPending(): bool
@@ -279,7 +273,7 @@ class Session implements AuthenticatorInterface
 
     public function completeAction(): void
     {
-        unset($_SESSION['auth_action']);
+        unset($_SESSION['auth_action'], $_SESSION['2fa_code_sent']);
         $this->regenerateSession();
         $this->userState = self::STATE_LOGGED_IN;
     }
@@ -290,13 +284,16 @@ class Session implements AuthenticatorInterface
             return false;
         }
 
-        if (!hash_equals($identity->secret, $token)) {
+        if ($identity->isExpired()) {
+            return false;
+        }
+
+        if (!hash_equals($identity->secret, hash('sha256', $token))) {
             return false;
         }
 
         // Delete the identity
-        $em = new EntityManager($this->getOrm());
-        $em->delete($identity)->run();
+        $identity->delete();
 
         $this->completeAction();
 
@@ -317,16 +314,14 @@ class Session implements AuthenticatorInterface
         $validator = bin2hex(random_bytes(20));
         $expires   = $this->config['session']['remember_length'] ?? 30 * 86400;
 
-        $token = new RememberToken();
+        $token = new RememberToken(\Flight::db());
         $token->selector         = $selector;
         $token->hashed_validator = hash('sha256', $validator);
         $token->user_id          = $this->user->id;
-        $token->expires          = new \DateTimeImmutable("+{$expires} seconds");
-        $token->created_at       = new \DateTimeImmutable();
-        $token->updated_at       = new \DateTimeImmutable();
-
-        $em = new EntityManager($this->getOrm());
-        $em->persist($token)->run();
+        $token->expires          = (new \DateTimeImmutable("+{$expires} seconds"))->format('Y-m-d H:i:s');
+        $token->created_at       = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $token->updated_at       = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $token->insert();
 
         $cookieName = $this->config['session']['remember_cookie_name'] ?? 'remember';
 
@@ -335,7 +330,7 @@ class Session implements AuthenticatorInterface
             'path'     => '/',
             'secure'   => true,
             'httponly'  => true,
-            'samesite' => 'Strict',
+            'samesite' => 'Lax',
         ]);
     }
 
@@ -355,7 +350,7 @@ class Session implements AuthenticatorInterface
 
         [$selector, $validator] = $parts;
 
-        $rememberRepo = $this->getRememberRepository();
+        $rememberRepo = $this->getRememberModel();
         $token = $rememberRepo->findBySelector($selector);
 
         if ($token === null || $token->isExpired()) {
@@ -365,12 +360,12 @@ class Session implements AuthenticatorInterface
 
         if (! hash_equals($token->hashed_validator, hash('sha256', $validator))) {
             // Possible token theft — purge all tokens for this user
-            $rememberRepo->deleteByUser($token->user_id, $this->getOrm());
+            $rememberRepo->deleteByUser($token->user_id);
             $this->clearCookie($cookieName);
             return;
         }
 
-        $user = $this->getUserRepository()->findById($token->user_id);
+        $user = $this->getUserModel()->findById($token->user_id);
 
         if ($user === null || $user->isBanned() || ! $user->isActivated()) {
             $this->clearCookie($cookieName);
@@ -378,15 +373,14 @@ class Session implements AuthenticatorInterface
         }
 
         // Delete old token, log in, issue new token
-        $em = new EntityManager($this->getOrm());
-        $em->delete($token)->run();
+        $token->delete();
 
         $this->login($user);
         $this->remember();
 
         // Purge expired tokens occasionally (20% chance)
         if (random_int(1, 5) === 1) {
-            $rememberRepo->purgeExpired($this->getOrm());
+            $rememberRepo->purgeExpired();
         }
     }
 
@@ -414,7 +408,7 @@ class Session implements AuthenticatorInterface
         }
 
         $userId = $_SESSION[$sessionField];
-        $user = $this->getUserRepository()->findById($userId);
+        $user = $this->getUserModel()->findById($userId);
 
         if ($user === null) {
             unset($_SESSION[$sessionField]);
@@ -443,43 +437,43 @@ class Session implements AuthenticatorInterface
             return;
         }
 
-        $login = new Login();
+        $login = new Login(\Flight::db());
         $login->id_type    = isset($credentials['email']) ? 'email_password' : 'username';
         $login->identifier = $credentials['email'] ?? $credentials['username'] ?? 'unknown';
         $login->success    = $success;
         $login->user_id    = $userId;
         $login->ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         $login->user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-        $login->date       = new \DateTimeImmutable();
-
-        $em = new EntityManager($this->getOrm());
-        $em->persist($login)->run();
+        $login->date       = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $login->insert();
     }
 
-    protected function getUserRepository(): UserRepository
+    protected function getUserModel(): User
     {
-        return $this->app->orm()->getRepository(User::class);
+        return new User(\Flight::db());
     }
 
-    protected function getIdentityRepository(): UserIdentityRepository
+    protected function getIdentityModel(): UserIdentity
     {
-        return $this->app->orm()->getRepository(UserIdentity::class);
+        return new UserIdentity(\Flight::db());
     }
 
-    protected function getRememberRepository(): RememberTokenRepository
+    protected function getRememberModel(): RememberToken
     {
-        return $this->app->orm()->getRepository(RememberToken::class);
-    }
-
-    protected function getOrm(): \Cycle\ORM\ORMInterface
-    {
-        return $this->app->orm();
+        return new RememberToken(\Flight::db());
     }
 
     protected function ensureSession(): void
     {
         if (session_status() === PHP_SESSION_NONE && php_sapi_name() !== 'cli') {
-            session_start();
+            $secure = $this->app->get('flight.force_https') === true;
+
+            session_start([
+                'cookie_httponly'  => true,
+                'cookie_secure'   => $secure,
+                'cookie_samesite' => 'Lax',
+                'use_strict_mode' => true,
+            ]);
         }
     }
 

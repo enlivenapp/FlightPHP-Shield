@@ -10,9 +10,7 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Commands;
 
-use Cycle\ORM\EntityManager;
-use Cycle\ORM\ORMInterface;
-use Enlivenapp\FlightShield\Entities\AuthPermission;
+use Enlivenapp\FlightShield\Models\AuthPermission;
 use flight\commands\AbstractBaseCommand;
 
 class ShieldPermissionCommand extends AbstractBaseCommand
@@ -42,21 +40,18 @@ class ShieldPermissionCommand extends AbstractBaseCommand
             return;
         }
 
-        $orm = $this->getOrm();
-
         match ($action) {
-            'list'   => $this->listPermissions($orm, $io),
-            'create' => $this->createPermission($orm, $io, $alias, $description),
-            'update' => $this->updatePermission($orm, $io, $alias, $description),
-            'delete' => $this->deletePermission($orm, $io, $alias),
+            'list'   => $this->listPermissions($io),
+            'create' => $this->createPermission($io, $alias, $description),
+            'update' => $this->updatePermission($io, $alias, $description),
+            'delete' => $this->deletePermission($io, $alias),
             default  => $io->error("Unknown action: {$action}", true),
         };
     }
 
-    protected function listPermissions(ORMInterface $orm, $io): void
+    protected function listPermissions($io): void
     {
-        $repo = $orm->getRepository(AuthPermission::class);
-        $all = $repo->select()->orderBy('alias')->fetchAll();
+        $all = (new AuthPermission(\Flight::db()))->order('alias ASC')->findAll();
 
         if (empty($all)) {
             $io->write('No permissions found.', true);
@@ -69,44 +64,39 @@ class ShieldPermissionCommand extends AbstractBaseCommand
         }
     }
 
-    protected function createPermission(ORMInterface $orm, $io, ?string $alias, ?string $description): void
+    protected function createPermission($io, ?string $alias, ?string $description): void
     {
         if ($alias === null) {
             $io->error('Alias is required (-a alias).', true);
             return;
         }
 
-        $repo = $orm->getRepository(AuthPermission::class);
-        $existing = $repo->select()->where('alias', $alias)->fetchOne();
-
-        if ($existing !== null) {
+        $existing = (new AuthPermission(\Flight::db()))->eq('alias', $alias)->find();
+        if ($existing->isHydrated()) {
             $io->error("Permission \"{$alias}\" already exists.", true);
             return;
         }
 
-        $perm = new AuthPermission();
-        $perm->alias = $alias;
+        $perm = new AuthPermission(\Flight::db());
+        $perm->alias       = $alias;
         $perm->description = $description;
-        $perm->created_at = new \DateTimeImmutable();
-        $perm->updated_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($orm);
-        $em->persist($perm)->run();
+        $perm->created_at  = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $perm->updated_at  = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $perm->insert();
 
         $io->info("Permission \"{$alias}\" created.", true);
     }
 
-    protected function updatePermission(ORMInterface $orm, $io, ?string $alias, ?string $description): void
+    protected function updatePermission($io, ?string $alias, ?string $description): void
     {
         if ($alias === null) {
             $io->error('Alias is required (-a alias).', true);
             return;
         }
 
-        $repo = $orm->getRepository(AuthPermission::class);
-        $perm = $repo->select()->where('alias', $alias)->fetchOne();
+        $perm = (new AuthPermission(\Flight::db()))->eq('alias', $alias)->find();
 
-        if ($perm === null) {
+        if (! $perm->isHydrated()) {
             $io->error("Permission \"{$alias}\" not found.", true);
             return;
         }
@@ -115,37 +105,28 @@ class ShieldPermissionCommand extends AbstractBaseCommand
             $perm->description = $description;
         }
 
-        $perm->updated_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($orm);
-        $em->persist($perm)->run();
+        $perm->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $perm->save();
 
         $io->info("Permission \"{$alias}\" updated.", true);
     }
 
-    protected function deletePermission(ORMInterface $orm, $io, ?string $alias): void
+    protected function deletePermission($io, ?string $alias): void
     {
         if ($alias === null) {
             $io->error('Alias is required (-a alias).', true);
             return;
         }
 
-        $repo = $orm->getRepository(AuthPermission::class);
-        $perm = $repo->select()->where('alias', $alias)->fetchOne();
+        $perm = (new AuthPermission(\Flight::db()))->eq('alias', $alias)->find();
 
-        if ($perm === null) {
+        if (! $perm->isHydrated()) {
             $io->error("Permission \"{$alias}\" not found.", true);
             return;
         }
 
-        $em = new EntityManager($orm);
-        $em->delete($perm)->run();
+        $perm->delete();
 
         $io->info("Permission \"{$alias}\" deleted.", true);
-    }
-
-    protected function getOrm(): ORMInterface
-    {
-        return \Flight::app()->orm();
     }
 }

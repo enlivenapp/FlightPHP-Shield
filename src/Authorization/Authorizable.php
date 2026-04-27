@@ -10,21 +10,21 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Authorization;
 
-use Cycle\ORM\EntityManager;
-use Cycle\ORM\ORMInterface;
-use Enlivenapp\FlightShield\Entities\GroupUser;
-use Enlivenapp\FlightShield\Entities\PermissionUser;
+use Enlivenapp\FlightShield\Models\AuthGroupPermission;
+use Enlivenapp\FlightShield\Models\GroupUser;
+use Enlivenapp\FlightShield\Models\PermissionUser;
 
 /**
  * Authorization trait for the User entity.
  *
- * Groups and permissions are loaded from the user's relations.
- * Write operations (add/remove/sync) require an ORM instance.
+ * Groups and permissions are loaded directly from the database via AR.
+ * $this inside this trait IS the User AR entity — $this->id is the user's ID.
  */
 trait Authorizable
 {
     protected ?array $groupsCache = null;
     protected ?array $permissionsCache = null;
+    protected ?array $deniedCache = null;
 
     // -----------------------------------------------------------------
     // Groups
@@ -36,69 +36,66 @@ trait Authorizable
             return $this->groupsCache;
         }
 
+        $records = (new GroupUser(\Flight::db()))
+            ->eq('user_id', $this->id)
+            ->findAll();
+
         $this->groupsCache = array_map(
-            fn(GroupUser $r) => $r->group,
-            $this->group_records ?? []
+            fn(GroupUser $r) => $r->group_alias,
+            $records
         );
 
         return $this->groupsCache;
     }
 
-    public function addGroup(string $group, ORMInterface $orm): static
+    public function addGroup(string $group): static
     {
         // Check if already in group
         if ($this->inGroup($group)) {
             return $this;
         }
 
-        $record = new GroupUser();
+        $record = new GroupUser(\Flight::db());
         $record->user_id = $this->id;
-        $record->group = $group;
-        $record->created_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($orm);
-        $em->persist($record)->run();
+        $record->group_alias = $group;
+        $record->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $record->insert();
 
         $this->groupsCache = null;
         return $this;
     }
 
-    public function removeGroup(string $group, ORMInterface $orm): static
+    public function removeGroup(string $group): static
     {
-        $repo = $orm->getRepository(GroupUser::class);
-        $record = $repo->select()
-            ->where('user_id', $this->id)
-            ->where('group', $group)
-            ->fetchOne();
+        $record = (new GroupUser(\Flight::db()))
+            ->eq('user_id', $this->id)
+            ->eq('group_alias', $group)
+            ->find();
 
-        if ($record) {
-            $em = new EntityManager($orm);
-            $em->delete($record)->run();
+        if ($record->isHydrated()) {
+            $record->delete();
         }
 
         $this->groupsCache = null;
         return $this;
     }
 
-    public function syncGroups(array $groups, ORMInterface $orm): static
+    public function syncGroups(array $groups): static
     {
-        $repo = $orm->getRepository(GroupUser::class);
-        $existing = $repo->select()->where('user_id', $this->id)->fetchAll();
+        $existing = (new GroupUser(\Flight::db()))
+            ->eq('user_id', $this->id)
+            ->findAll();
 
-        $em = new EntityManager($orm);
         foreach ($existing as $record) {
-            $em->delete($record);
+            $record->delete();
         }
-        $em->run();
 
         foreach ($groups as $group) {
-            $record = new GroupUser();
+            $record = new GroupUser(\Flight::db());
             $record->user_id = $this->id;
-            $record->group = $group;
-            $record->created_at = new \DateTimeImmutable();
-
-            $em = new EntityManager($orm);
-            $em->persist($record)->run();
+            $record->group_alias = $group;
+            $record->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            $record->insert();
         }
 
         $this->groupsCache = null;
@@ -124,101 +121,150 @@ trait Authorizable
 
     public function getPermissions(): array
     {
-        if ($this->permissionsCache !== null) {
-            return $this->permissionsCache;
-        }
-
-        $this->permissionsCache = array_map(
-            fn(PermissionUser $r) => $r->permission,
-            $this->permission_records ?? []
-        );
-
+        $this->hydratePermissions();
         return $this->permissionsCache;
     }
 
-    public function addPermission(string $permission, ORMInterface $orm): static
+    public function getDeniedPermissions(): array
     {
-        $repo = $orm->getRepository(PermissionUser::class);
-        $existing = $repo->select()
-            ->where('user_id', $this->id)
-            ->where('permission', $permission)
-            ->fetchOne();
+        $this->hydratePermissions();
+        return $this->deniedCache;
+    }
 
-        if ($existing === null) {
-            $record = new PermissionUser();
+    protected function hydratePermissions(): void
+    {
+        if ($this->permissionsCache !== null) {
+            return;
+        }
+
+        $records = (new PermissionUser(\Flight::db()))
+            ->eq('user_id', $this->id)
+            ->findAll();
+
+        $this->permissionsCache = [];
+        $this->deniedCache = [];
+
+        foreach ($records as $r) {
+            if ($r->deny) {
+                $this->deniedCache[] = $r->permission;
+            } else {
+                $this->permissionsCache[] = $r->permission;
+            }
+        }
+    }
+
+    public function addPermission(string $permission, bool $deny = false): static
+    {
+        $existing = (new PermissionUser(\Flight::db()))
+            ->eq('user_id', $this->id)
+            ->eq('permission', $permission)
+            ->find();
+
+        if ($existing->isHydrated()) {
+            $existing->deny = $deny;
+            $existing->save();
+        } else {
+            $record = new PermissionUser(\Flight::db());
             $record->user_id = $this->id;
             $record->permission = $permission;
-            $record->created_at = new \DateTimeImmutable();
-
-            $em = new EntityManager($orm);
-            $em->persist($record)->run();
+            $record->deny = $deny;
+            $record->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            $record->insert();
         }
 
         $this->permissionsCache = null;
+        $this->deniedCache = null;
         return $this;
     }
 
-    public function removePermission(string $permission, ORMInterface $orm): static
+    public function denyPermission(string $permission): static
     {
-        $repo = $orm->getRepository(PermissionUser::class);
-        $record = $repo->select()
-            ->where('user_id', $this->id)
-            ->where('permission', $permission)
-            ->fetchOne();
-
-        if ($record) {
-            $em = new EntityManager($orm);
-            $em->delete($record)->run();
-        }
-
-        $this->permissionsCache = null;
-        return $this;
+        return $this->addPermission($permission, true);
     }
 
-    public function syncPermissions(array $permissions, ORMInterface $orm): static
+    public function removePermission(string $permission): static
     {
-        $repo = $orm->getRepository(PermissionUser::class);
-        $existing = $repo->select()->where('user_id', $this->id)->fetchAll();
+        $record = (new PermissionUser(\Flight::db()))
+            ->eq('user_id', $this->id)
+            ->eq('permission', $permission)
+            ->find();
 
-        $em = new EntityManager($orm);
-        foreach ($existing as $record) {
-            $em->delete($record);
-        }
-        $em->run();
-
-        foreach ($permissions as $permission) {
-            $record = new PermissionUser();
-            $record->user_id = $this->id;
-            $record->permission = $permission;
-            $record->created_at = new \DateTimeImmutable();
-
-            $em = new EntityManager($orm);
-            $em->persist($record)->run();
+        if ($record->isHydrated()) {
+            $record->delete();
         }
 
         $this->permissionsCache = null;
+        $this->deniedCache = null;
         return $this;
     }
 
     /**
-     * Check if user has permission — checks direct permissions first,
-     * then group permissions from the database.
+     * Sync user permissions.
+     *
+     * @param array $grants  Permission aliases to grant
+     * @param array $denies  Permission aliases to deny
+     */
+    public function syncPermissions(array $grants, array $denies = []): static
+    {
+        $existing = (new PermissionUser(\Flight::db()))
+            ->eq('user_id', $this->id)
+            ->findAll();
+
+        foreach ($existing as $record) {
+            $record->delete();
+        }
+
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        foreach ($grants as $permission) {
+            $record = new PermissionUser(\Flight::db());
+            $record->user_id = $this->id;
+            $record->permission = $permission;
+            $record->deny = false;
+            $record->created_at = $now;
+            $record->insert();
+        }
+
+        foreach ($denies as $permission) {
+            $record = new PermissionUser(\Flight::db());
+            $record->user_id = $this->id;
+            $record->permission = $permission;
+            $record->deny = true;
+            $record->created_at = $now;
+            $record->insert();
+        }
+
+        $this->permissionsCache = null;
+        $this->deniedCache = null;
+        return $this;
+    }
+
+    /**
+     * Check if user has permission.
+     *
+     * 1. Check direct user denies — if denied, return false immediately
+     * 2. Check direct user grants — if granted, return true
+     * 3. Check group permissions — if matched, return true
+     * 4. Return false
      */
     public function can(string $permission): bool
     {
-        // Check direct user permissions
-        $userPerms = $this->getPermissions();
+        // 1. Direct deny overrides everything
+        $denied = $this->getDeniedPermissions();
+        if ($this->matchesPermission($permission, $denied)) {
+            return false;
+        }
 
-        if ($this->matchesPermission($permission, $userPerms)) {
+        // 2. Direct grant
+        $granted = $this->getPermissions();
+        if ($this->matchesPermission($permission, $granted)) {
             return true;
         }
 
-        // Check group-level permissions
+        // 3. Group permissions
         $userGroups = $this->getGroups();
-
         foreach ($userGroups as $group) {
             $groupPerms = $this->getGroupPermissionsFromDb($group);
-
             if ($this->matchesPermission($permission, $groupPerms)) {
                 return true;
             }
@@ -239,12 +285,12 @@ trait Authorizable
             return $cache[$group];
         }
 
-        $orm = \Flight::app()->orm();
-        $repo = $orm->getRepository(\Enlivenapp\FlightShield\Entities\AuthGroupPermission::class);
-        $records = $repo->select()->where('group_alias', $group)->fetchAll();
+        $records = (new AuthGroupPermission(\Flight::db()))
+            ->eq('group_alias', $group)
+            ->findAll();
 
         $cache[$group] = array_map(
-            fn(\Enlivenapp\FlightShield\Entities\AuthGroupPermission $r) => $r->permission_alias,
+            fn(AuthGroupPermission $r) => $r->permission_alias,
             $records
         );
 

@@ -10,22 +10,20 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Authorization;
 
-use Cycle\ORM\EntityManager;
-use Cycle\ORM\ORMInterface;
-use Enlivenapp\FlightShield\Entities\AuthGroup;
-use Enlivenapp\FlightShield\Entities\AuthGroupPermission;
-use Enlivenapp\FlightShield\Entities\GroupUser;
+use Enlivenapp\FlightShield\Models\AuthGroup;
+use Enlivenapp\FlightShield\Models\AuthGroupPermission;
+use Enlivenapp\FlightShield\Models\GroupUser;
 
 /**
  * Utility class for working with groups — backed by the auth_groups table.
  */
 class Groups
 {
-    protected ORMInterface $orm;
+    protected $pdo;
 
-    public function __construct(ORMInterface $orm)
+    public function __construct($pdo)
     {
-        $this->orm = $orm;
+        $this->pdo = $pdo;
     }
 
     /**
@@ -33,10 +31,11 @@ class Groups
      */
     public function info(string $group): ?AuthGroup
     {
-        $repo = $this->orm->getRepository(AuthGroup::class);
-        return $repo->select()
-            ->where('alias', strtolower($group))
-            ->fetchOne();
+        $record = (new AuthGroup($this->pdo))
+            ->eq('alias', strtolower($group))
+            ->find();
+
+        return $record->isHydrated() ? $record : null;
     }
 
     /**
@@ -46,8 +45,9 @@ class Groups
      */
     public function all(): array
     {
-        $repo = $this->orm->getRepository(AuthGroup::class);
-        return $repo->select()->orderBy('alias')->fetchAll();
+        return (new AuthGroup($this->pdo))
+            ->order('alias ASC')
+            ->findAll();
     }
 
     /**
@@ -55,14 +55,18 @@ class Groups
      */
     public function save(AuthGroup $group): void
     {
-        $now = new \DateTimeImmutable();
+        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
         if ($group->created_at === null) {
             $group->created_at = $now;
         }
         $group->updated_at = $now;
 
-        $em = new EntityManager($this->orm);
-        $em->persist($group)->run();
+        if (!isset($group->id)) {
+            $group->insert();
+        } else {
+            $group->save();
+        }
     }
 
     /**
@@ -79,49 +83,50 @@ class Groups
         }
 
         // --- 1. Handle user memberships ---
-        $guRepo = $this->orm->getRepository(GroupUser::class);
 
         // Collect all membership records for this group
-        $memberships = $guRepo->select()->where('group', $alias)->fetchAll();
+        $memberships = (new GroupUser($this->pdo))
+            ->eq('group_alias', $alias)
+            ->findAll();
 
         // Determine which affected users will be left with no groups
         $affectedUserIds = array_unique(
             array_map(fn(GroupUser $r) => $r->user_id, $memberships)
         );
 
-        $em = new EntityManager($this->orm);
-
         foreach ($affectedUserIds as $userId) {
             // Count remaining groups for this user, excluding the group being deleted
-            $remainingCount = $guRepo->select()
-                ->where('user_id', $userId)
-                ->where('group', '!=', $alias)
-                ->count();
+            $remaining = (new GroupUser($this->pdo))
+                ->eq('user_id', $userId)
+                ->ne('group_alias', $alias)
+                ->findAll();
 
-            if ($remainingCount === 0 && $alias !== 'user') {
+            if (count($remaining) === 0 && $alias !== 'user') {
                 // Re-assign to the default group before deleting the membership
-                $fallback = new GroupUser();
+                $fallback = new GroupUser($this->pdo);
                 $fallback->user_id = $userId;
-                $fallback->group = 'user';
-                $fallback->created_at = new \DateTimeImmutable();
-                $em->persist($fallback);
+                $fallback->group_alias = 'user';
+                $fallback->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+                $fallback->insert();
             }
         }
 
         // Delete all membership records for this group
         foreach ($memberships as $membership) {
-            $em->delete($membership);
+            $membership->delete();
         }
 
         // --- 2. Remove group-permission mappings ---
-        $gpRepo = $this->orm->getRepository(AuthGroupPermission::class);
-        $permMappings = $gpRepo->select()->where('group_alias', $alias)->fetchAll();
+        $permMappings = (new AuthGroupPermission($this->pdo))
+            ->eq('group_alias', $alias)
+            ->findAll();
+
         foreach ($permMappings as $mapping) {
-            $em->delete($mapping);
+            $mapping->delete();
         }
 
         // --- 3. Delete the group itself ---
-        $em->delete($group)->run();
+        $group->delete();
     }
 
     /**
@@ -131,8 +136,9 @@ class Groups
      */
     public function permissions(string $alias): array
     {
-        $repo = $this->orm->getRepository(AuthGroupPermission::class);
-        $records = $repo->select()->where('group_alias', $alias)->fetchAll();
+        $records = (new AuthGroupPermission($this->pdo))
+            ->eq('group_alias', $alias)
+            ->findAll();
 
         return array_map(
             fn(AuthGroupPermission $r) => $r->permission_alias,
@@ -145,23 +151,20 @@ class Groups
      */
     public function addPermission(string $groupAlias, string $permissionAlias): void
     {
-        $repo = $this->orm->getRepository(AuthGroupPermission::class);
-        $existing = $repo->select()
-            ->where('group_alias', $groupAlias)
-            ->where('permission_alias', $permissionAlias)
-            ->fetchOne();
+        $existing = (new AuthGroupPermission($this->pdo))
+            ->eq('group_alias', $groupAlias)
+            ->eq('permission_alias', $permissionAlias)
+            ->find();
 
-        if ($existing !== null) {
+        if ($existing->isHydrated()) {
             return;
         }
 
-        $record = new AuthGroupPermission();
+        $record = new AuthGroupPermission($this->pdo);
         $record->group_alias = $groupAlias;
         $record->permission_alias = $permissionAlias;
-        $record->created_at = new \DateTimeImmutable();
-
-        $em = new EntityManager($this->orm);
-        $em->persist($record)->run();
+        $record->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $record->insert();
     }
 
     /**
@@ -169,17 +172,15 @@ class Groups
      */
     public function removePermission(string $groupAlias, string $permissionAlias): void
     {
-        $repo = $this->orm->getRepository(AuthGroupPermission::class);
-        $record = $repo->select()
-            ->where('group_alias', $groupAlias)
-            ->where('permission_alias', $permissionAlias)
-            ->fetchOne();
+        $record = (new AuthGroupPermission($this->pdo))
+            ->eq('group_alias', $groupAlias)
+            ->eq('permission_alias', $permissionAlias)
+            ->find();
 
-        if ($record === null) {
+        if (!$record->isHydrated()) {
             return;
         }
 
-        $em = new EntityManager($this->orm);
-        $em->delete($record)->run();
+        $record->delete();
     }
 }

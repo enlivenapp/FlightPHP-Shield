@@ -26,7 +26,14 @@ class LoginController
     public function showLogin(): void
     {
         if ($this->app->auth()->loggedIn()) {
-            $this->app->redirect($this->config['redirects']['after_login'] ?? '/');
+            $user = $this->app->auth()->user();
+            $adminRedirect = $this->config['redirects']['after_login_admin'] ?? null;
+
+            if ($adminRedirect !== null && $user !== null && $user->can('admin.access')) {
+                $this->app->redirect($adminRedirect);
+            } else {
+                $this->app->redirect($this->config['redirects']['after_login'] ?? '/');
+            }
             return;
         }
 
@@ -84,8 +91,14 @@ class LoginController
             }
         }
 
-        $redirect = $this->config['redirects']['after_login'] ?? '/';
-        $this->app->redirect($redirect);
+        $user = $auth->user();
+        $adminRedirect = $this->config['redirects']['after_login_admin'] ?? null;
+
+        if ($adminRedirect !== null && $user !== null && $user->can('admin.access')) {
+            $this->app->redirect($adminRedirect);
+        } else {
+            $this->app->redirect($this->config['redirects']['after_login'] ?? '/');
+        }
     }
 
     public function logout(): void

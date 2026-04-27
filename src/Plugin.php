@@ -18,20 +18,44 @@ class Plugin implements PluginInterface
 {
     public function register(Engine $app, Router $router, array $config = []): void
     {
+        // Enforce HTTPS policy
+        if (php_sapi_name() !== 'cli') {
+            $this->enforceHttps($app, $config);
+        }
+
         // Ensure app config has required shield entries
         $this->ensureAppConfig();
 
         // Register the Auth facade as a Flight service
         $app->register('auth', Auth::class, [$app, $config]);
 
-        // Register entity directory for schema discovery
-        $database = $app->get('database');
-        if ($database) {
-            $database->addEntityDirectory(__DIR__ . '/Entities');
-        }
-
         // Load helper functions
         require_once __DIR__ . '/Helpers/auth_helper.php';
+    }
+
+    /**
+     * Enforce HTTPS policy.
+     *
+     * force_https not set → throw (developer must make an explicit choice)
+     * force_https = true  → throw if request is not HTTPS
+     * force_https = false → allow HTTP (dev/test environments)
+     */
+    protected function enforceHttps(Engine $app, array $config): void
+    {
+        $forceHttps = $app->get('flight.force_https');
+
+        if ($forceHttps === null) {
+            throw new \Enlivenapp\FlightShield\Exceptions\SecurityException(
+                'Shield requires "flight.force_https" to be set in your app config. '
+                . 'Set to true for production or false for development.'
+            );
+        }
+
+        if ($forceHttps === true && !$app->request()->secure) {
+            throw new \Enlivenapp\FlightShield\Exceptions\SecurityException(
+                'HTTPS is required. Set "flight.force_https" to false to allow HTTP for development.'
+            );
+        }
     }
 
     /**

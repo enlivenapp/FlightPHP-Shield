@@ -6,6 +6,8 @@
  * @license   MIT
  */
 
+declare(strict_types=1);
+
 namespace Enlivenapp\FlightShield\Authentication;
 
 use Enlivenapp\FlightShield\Exceptions\AuthenticationException;
