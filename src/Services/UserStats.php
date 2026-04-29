@@ -32,7 +32,7 @@ class UserStats
      */
     public function totalUsers(): int
     {
-        return $this->userModel->countAll();
+        return $this->userModel->countAll(true);
     }
 
     /**
