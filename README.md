@@ -1,10 +1,18 @@
-[![Version](http://poser.pugx.org/enlivenapp/flight-shield/version)](https://packagist.org/packages/enlivenapp/flight-shield)
-[![License](http://poser.pugx.org/enlivenapp/flight-shield/license)](https://packagist.org/packages/enlivenapp/flight-shield)
-[![Suggesters](http://poser.pugx.org/enlivenapp/flight-shield/suggesters)](https://packagist.org/packages/enlivenapp/flight-shield)
-[![PHP Version Require](http://poser.pugx.org/enlivenapp/flight-shield/require/php)](https://packagist.org/packages/enlivenapp/flight-shield)
-[![Monthly Downloads](https://poser.pugx.org/enlivenapp/flight-shield/d/monthly)](https://packagist.org/packages/enlivenapp/flight-shield)
+[![Stable? Not Quite Yet](https://img.shields.io/badge/stable%3F-not%20quite%20yet-blue?style=for-the-badge)](https://packagist.org/packages/enlivenapp/flight-shield)
+[![License](https://img.shields.io/packagist/l/enlivenapp/flight-shield?style=for-the-badge)](https://packagist.org/packages/enlivenapp/flight-shield)
+[![PHP Version](https://img.shields.io/packagist/php-v/enlivenapp/flight-shield?style=for-the-badge)](https://packagist.org/packages/enlivenapp/flight-shield)
+[![Monthly Downloads](https://img.shields.io/packagist/dm/enlivenapp/flight-shield?style=for-the-badge)](https://packagist.org/packages/enlivenapp/flight-shield)
+[![Total Downloads](https://img.shields.io/packagist/dt/enlivenapp/flight-shield?style=for-the-badge)](https://packagist.org/packages/enlivenapp/flight-shield)
+[![GitHub Issues](https://img.shields.io/github/issues/enlivenapp/FlightPHP-Shield?style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/issues)
+[![Contributors](https://img.shields.io/github/contributors/enlivenapp/FlightPHP-Shield?style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/graphs/contributors)
+[![Latest Release](https://img.shields.io/github/v/release/enlivenapp/FlightPHP-Shield?style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/releases)
+[![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-blue?style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/pulls)
 
 # Flight Shield
+
+**I noticed folks downloading some of these packages. I'm super grateful, Thank You!  I would like to let folks know until this notice disappears I'm doing a lot of breaking changes without worrying about them.  Once versions are up around 0.5.x things should settle down.**
+
+- additionally, we're waiting on a PR before this package works properly without the AR/fix branch goofiness.
 
 Flight Shield is an authentication and authorization plugin for [FlightPHP](https://flightphp.com/), ported and adapted from CodeIgniter Shield. It integrates into the [flight-school](https://github.com/enlivenapp/flight-school) plugin lifecycle and provides session login, access token authentication, HMAC-SHA256 request signing, JWT verification, role-based groups and permissions, password validation, and a full set of route-level middlewares — all wired into FlightPHP with minimal configuration.
 
@@ -64,6 +72,8 @@ In `app/config/config.php`, add the plugin to the `plugins` array:
 ```
 
 On first run, `Plugin::register()` calls `ensureAppConfig()`, which inspects your config file and automatically appends `hmac` and `jwt` stub entries inside the shield plugin block if they are not already present. This happens transparently — you will see the entries in your config file after the first request.
+
+Shield also uses Flight School's return-array config format in `src/Config/Config.php`. The defaults from that file are stored on `$app` under `enlivenapp.flight-shield`, and the route prefix is defined there with `'routePrepend' => 'auth'`.
 
 **3. Run the migrations**
 
@@ -714,7 +724,7 @@ All options live inside the shield entry in `app/config/config.php`. The plugin 
 
 ## Routes
 
-Shield registers the following routes under the prefix defined by `$routePrepend` in `src/Config/Config.php` (default: `auth`).
+Shield registers the following routes under the prefix defined by the returned `routePrepend` value in `src/Config/Config.php` (default: `auth`).
 
 | Method | Path | Notes |
 |--------|------|-------|

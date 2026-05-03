@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * @package   Enlivenapp\FlightShield
  * @copyright 2026 enlivenapp
@@ -8,6 +10,9 @@
 
 namespace Enlivenapp\FlightShield;
 
+/**
+ * Value object representing the outcome of an authentication or authorization check.
+ */
 class Result
 {
     protected bool $success = false;

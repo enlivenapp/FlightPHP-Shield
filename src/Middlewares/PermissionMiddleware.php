@@ -36,7 +36,7 @@ class PermissionMiddleware
         if (! $auth->loggedIn()) {
             $config = $this->app->get('enlivenapp.flight-shield') ?? [];
             $this->app->redirect($config['redirects']['login'] ?? '/auth/login');
-            return;
+            $this->app->halt(303);
         }
 
         $user = $auth->user();
@@ -49,5 +49,6 @@ class PermissionMiddleware
         }
 
         $this->app->redirect($config['redirects']['permission_denied'] ?? '/auth/login');
+        $this->app->halt(303);
     }
 }

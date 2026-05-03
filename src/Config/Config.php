@@ -10,9 +10,8 @@
  * Flight Shield default configuration.
  */
 
-$routePrepend = 'auth';
-
 return [
+    'routePrepend' => 'auth',
     // Default authenticator
     'default_authenticator' => 'session',
 

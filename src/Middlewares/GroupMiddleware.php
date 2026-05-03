@@ -36,7 +36,7 @@ class GroupMiddleware
         if (! $auth->loggedIn()) {
             $config = $this->app->get('enlivenapp.flight-shield') ?? [];
             $this->app->redirect($config['redirects']['login'] ?? '/auth/login');
-            return;
+            $this->app->halt(303);
         }
 
         $user = $auth->user();
@@ -44,6 +44,7 @@ class GroupMiddleware
 
         if (! $user->inGroup(...$this->groups)) {
             $this->app->redirect($config['redirects']['group_denied'] ?? '/auth/login');
+            $this->app->halt(303);
         }
     }
 }

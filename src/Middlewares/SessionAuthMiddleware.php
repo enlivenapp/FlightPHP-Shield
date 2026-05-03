@@ -29,7 +29,7 @@ class SessionAuthMiddleware
             $config = $this->app->get('enlivenapp.flight-shield') ?? [];
             $loginUrl = $config['redirects']['login'] ?? '/auth/login';
             $this->app->redirect($loginUrl);
-            return;
+            $this->app->halt(303);
         }
 
         $auth->recordActiveDate();
