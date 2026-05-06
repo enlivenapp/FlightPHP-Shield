@@ -12,9 +12,9 @@
     "require": {
         "php": ">=8.1",
         "flightphp/core": "^3.0",
-        "enlivenapp/flight-school": "^0.2",
-        "enlivenapp/flight-csrf": "^0.1",
-        "enlivenapp/flight-settings": "^0.1"
+        "enlivenapp/flight-school": "^0.3",
+        "enlivenapp/flight-csrf": "^0.2",
+        "enlivenapp/flight-settings": "^0.2"
     },
     "suggest": {
         "firebase/php-jwt": "Required for JWT authentication (^6.0)"
