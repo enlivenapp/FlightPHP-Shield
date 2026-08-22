@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Models;
 
-use Enlivenapp\FlightSettings\Services\Settings;
+namespace Enlivenapp\FlightShield\Models;
 
 /**
  * @deprecated Use \Enlivenapp\FlightShield\Models\AuthGroup instead.
@@ -22,14 +22,12 @@ class Group
     public string $title;
     public string $description;
     protected ?array $permissions = null;
-    protected ?Settings $settings = null;
 
-    public function __construct(array $data = [], ?Settings $settings = null)
+    public function __construct(array $data = [])
     {
         $this->alias       = $data['alias'] ?? '';
         $this->title       = $data['title'] ?? '';
         $this->description = $data['description'] ?? '';
-        $this->settings    = $settings;
     }
 
     public function permissions(): array
@@ -41,12 +39,6 @@ class Group
     public function setPermissions(array $permissions): void
     {
         $this->permissions = $permissions;
-
-        if ($this->settings !== null) {
-            $matrix = $this->settings->get('AuthGroups.matrix') ?? [];
-            $matrix[$this->alias] = $permissions;
-            $this->settings->set('AuthGroups.matrix', $matrix);
-        }
     }
 
     public function addPermission(string $permission): void
@@ -86,11 +78,6 @@ class Group
             return;
         }
 
-        if ($this->settings !== null) {
-            $matrix = $this->settings->get('AuthGroups.matrix') ?? [];
-            $this->permissions = $matrix[$this->alias] ?? [];
-        } else {
-            $this->permissions = [];
-        }
+        $this->permissions = [];
     }
 }
