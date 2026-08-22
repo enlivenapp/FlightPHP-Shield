@@ -14,7 +14,7 @@
 
 - additionally, we're waiting on a PR before this package works properly without the AR/fix branch goofiness.
 
-Flight Shield is an authentication and authorization plugin for [FlightPHP](https://flightphp.com/), ported and adapted from CodeIgniter Shield. It integrates into the [flight-school](https://github.com/enlivenapp/flight-school) plugin lifecycle and provides session login, access token authentication, HMAC-SHA256 request signing, JWT verification, role-based groups and permissions, password validation, and a full set of route-level middlewares — all wired into FlightPHP with minimal configuration.
+Flight Shield is an authentication and authorization plugin for [FlightPHP](https://flightphp.com/), ported and adapted from CodeIgniter Shield. It integrates into the [flight-school](https://github.com/enlivenapp/flight-school) plugin lifecycle and provides session login, access token authentication, HMAC-SHA256 request signing, JWT verification, role-based groups and permissions, password validation, and a full set of route-level middlewares - all wired into FlightPHP with minimal configuration.
 
 ---
 
@@ -24,7 +24,7 @@ Flight Shield is an authentication and authorization plugin for [FlightPHP](http
 - Access token authentication (Bearer tokens in the `Authorization` header)
 - HMAC-SHA256 API authentication with AES-256-GCM encrypted secrets at rest and replay protection
 - JWT authentication (requires `firebase/php-jwt`)
-- Chain authentication — try multiple authenticators in order, first success wins
+- Chain authentication - try multiple authenticators in order, first success wins
 - Groups and permissions (role-based access control with wildcard support)
 - Per-user direct permissions in addition to group-inherited permissions
 - Email two-factor authentication (2FA) as an optional post-login action
@@ -38,7 +38,7 @@ Flight Shield is an authentication and authorization plugin for [FlightPHP](http
 - Login attempt recording (none, failures only, or all)
 - CLI commands for managing users, groups, permissions, and HMAC keys
 - Global helper functions `auth()` and `user_id()`
-- View overrides — bundle views can be replaced per-app
+- View overrides - bundle views can be replaced per-app
 
 ---
 
@@ -71,7 +71,7 @@ In `app/config/config.php`, add the plugin to the `plugins` array:
 ],
 ```
 
-On first run, `Plugin::register()` calls `ensureAppConfig()`, which inspects your config file and automatically appends `hmac` and `jwt` stub entries inside the shield plugin block if they are not already present. This happens transparently — you will see the entries in your config file after the first request.
+On first run, `Plugin::register()` calls `ensureAppConfig()`, which inspects your config file and automatically appends `hmac` and `jwt` stub entries inside the shield plugin block if they are not already present. This happens transparently - you will see the entries in your config file after the first request.
 
 Shield also uses Flight School's return-array config format in `src/Config/Config.php`. The defaults from that file are stored on `$app` under `enlivenapp.flight-shield`, and the route prefix is defined there with `'routePrepend' => 'auth'`.
 
@@ -87,13 +87,13 @@ This creates the following tables: `users`, `auth_identities`, `auth_logins`, `a
 
 **4. Seed default groups and permissions**
 
-Default groups, permissions, and group-permission mappings are declared as seed data in `Plugin::$seeds`. These are applied automatically by enlivenapp/migrations when flight-school calls `handleActivate()` during plugin activation. There is no separate CLI step — enabling the plugin through the flight-school lifecycle is what fires the seeds.
+Default groups, permissions, and group-permission mappings are declared as seed data in `Plugin::$seeds`. These are applied automatically by enlivenapp/migrations when flight-school calls `handleActivate()` during plugin activation. There is no separate CLI step - enabling the plugin through the flight-school lifecycle is what fires the seeds.
 
 The seeds populate:
 
-- `auth_groups` — `superadmin`, `admin`, `user`
-- `auth_permissions` — `admin.access`, `users.list`, `users.create`, `users.edit`, `users.delete`, `profile.edit`
-- `auth_group_permissions` — superadmin gets `*` (all), admin gets the admin/user management permissions, user gets `profile.edit`
+- `auth_groups` - `superadmin`, `admin`, `user`
+- `auth_permissions` - `admin.access`, `users.list`, `users.create`, `users.edit`, `users.delete`, `profile.edit`
+- `auth_group_permissions` - superadmin gets `*` (all), admin gets the admin/user management permissions, user gets `profile.edit`
 
 ---
 
@@ -306,11 +306,11 @@ Default chain: `['session', 'tokens', 'hmac']`. Override with `authentication_ch
 
 ### Data model
 
-- `auth_groups` — group definitions (`alias`, `title`, `description`)
-- `auth_permissions` — permission definitions (`alias`, `description`)
-- `auth_group_permissions` — maps group aliases to permission aliases
-- `auth_groups_users` — maps user IDs to group aliases
-- `auth_permissions_users` — maps user IDs to permission aliases (direct grants)
+- `auth_groups` - group definitions (`alias`, `title`, `description`)
+- `auth_permissions` - permission definitions (`alias`, `description`)
+- `auth_group_permissions` - maps group aliases to permission aliases
+- `auth_groups_users` - maps user IDs to group aliases
+- `auth_permissions_users` - maps user IDs to permission aliases (direct grants)
 
 ### Permission resolution
 
@@ -327,9 +327,9 @@ Superadmin users are hidden from non-superadmin callers by default. This prevent
 
 The `User` model methods that support this:
 
-- `findAllPaginated(int $page, int $perPage, bool $includeSuperadmins = false)` — when `$includeSuperadmins` is `false`, users in the `superadmin` group are filtered out of results.
-- `countAll(bool $includeSuperadmins = false)` — same filtering for counts.
-- `findById(int $id, bool $includeSuperadmins = true)` — when `$includeSuperadmins` is `false`, returns `null` if the target user is in the `superadmin` group. Defaults to `true` for backward compatibility with internal auth lookups.
+- `findAllPaginated(int $page, int $perPage, bool $includeSuperadmins = false)` - when `$includeSuperadmins` is `false`, users in the `superadmin` group are filtered out of results.
+- `countAll(bool $includeSuperadmins = false)` - same filtering for counts.
+- `findById(int $id, bool $includeSuperadmins = true)` - when `$includeSuperadmins` is `false`, returns `null` if the target user is in the `superadmin` group. Defaults to `true` for backward compatibility with internal auth lookups.
 
 Pass `$currentUser->inGroup('superadmin')` as the flag so superadmins see everyone and non-superadmins see only non-superadmin users.
 
@@ -729,16 +729,16 @@ Shield registers the following routes under the prefix defined by the returned `
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/auth/login` | Show login form |
-| POST | `/auth/login` | Process login — CSRF + rate limit |
+| POST | `/auth/login` | Process login - CSRF + rate limit |
 | GET | `/auth/logout` | Log out |
 | GET | `/auth/register` | Show registration form |
-| POST | `/auth/register` | Process registration — CSRF |
+| POST | `/auth/register` | Process registration - CSRF |
 | GET | `/auth/magic-link` | Show magic link request form |
-| POST | `/auth/magic-link` | Send magic link email — CSRF + rate limit |
+| POST | `/auth/magic-link` | Send magic link email - CSRF + rate limit |
 | GET | `/auth/magic-link/verify` | Verify magic link token |
 | GET | `/auth/2fa` | Show 2FA verification page (sends code) |
-| POST | `/auth/2fa/verify` | Verify 2FA code — CSRF + rate limit |
-| POST | `/auth/2fa/resend` | Resend 2FA code — CSRF + rate limit |
+| POST | `/auth/2fa/verify` | Verify 2FA code - CSRF + rate limit |
+| POST | `/auth/2fa/resend` | Resend 2FA code - CSRF + rate limit |
 | GET | `/auth/activate` | Show activation page (sends email) |
 | GET | `/auth/activate/verify` | Verify email activation token |
 
@@ -779,17 +779,17 @@ Overrideable views:
 
 ## Security Notes
 
-- **Passwords** — hashed with `password_hash()` using `PASSWORD_DEFAULT` (bcrypt, cost 12). Configurable to Argon2 via `algorithm`, `memory_cost`, `time_cost`, and `threads`. Passwords are automatically rehashed when cost parameters change.
-- **HMAC secrets** — stored encrypted with AES-256-GCM. Encryption keys live in `app/config/config.php`, never in the database.
-- **Token comparison** — all token and hash comparisons use `hash_equals()` to prevent timing attacks.
-- **HMAC replay protection** — requests with a timestamp more than 300 seconds from `time()` are rejected.
-- **Remember-me tokens** — split-token scheme (selector stored plain, validator stored as SHA-256 hash). Mismatch purges all tokens for the user.
-- **CSRF** — all mutating auth routes are protected by `CsrfMiddleware` from `enlivenapp/flight-csrf`.
-- **Rate limiting** — failed login attempts are tracked per IP across `auth_logins` and `auth_token_logins`. Excessive failures result in HTTP 429.
-- **Session fixation** — the session ID is regenerated on login and logout.
+- **Passwords** - hashed with `password_hash()` using `PASSWORD_DEFAULT` (bcrypt, cost 12). Configurable to Argon2 via `algorithm`, `memory_cost`, `time_cost`, and `threads`. Passwords are automatically rehashed when cost parameters change.
+- **HMAC secrets** - stored encrypted with AES-256-GCM. Encryption keys live in `app/config/config.php`, never in the database.
+- **Token comparison** - all token and hash comparisons use `hash_equals()` to prevent timing attacks.
+- **HMAC replay protection** - requests with a timestamp more than 300 seconds from `time()` are rejected.
+- **Remember-me tokens** - split-token scheme (selector stored plain, validator stored as SHA-256 hash). Mismatch purges all tokens for the user.
+- **CSRF** - all mutating auth routes are protected by `CsrfMiddleware` from `enlivenapp/flight-csrf`.
+- **Rate limiting** - failed login attempts are tracked per IP across `auth_logins` and `auth_token_logins`. Excessive failures result in HTTP 429.
+- **Session fixation** - the session ID is regenerated on login and logout.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).

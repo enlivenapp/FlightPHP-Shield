@@ -10,11 +10,10 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield;
 
-use Enlivenapp\FlightSchool\PluginInterface;
 use flight\Engine;
 use flight\net\Router;
 
-class Plugin implements PluginInterface
+class Plugin
 {
     public function register(Engine $app, Router $router, array $config = []): void
     {
