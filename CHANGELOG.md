@@ -4,6 +4,15 @@
 
 ---
 
+## 0.3.1 - 2026-08-24
+
+### Changes
+
+**Added:**
+  - composer.json : ext-pdo and ext-openssl declared directly
+
+---
+
 ## 0.3.0 - 2026-08-24
 
 ### Changes

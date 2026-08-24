@@ -11,6 +11,8 @@
     ],
     "require": {
         "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-openssl": "*",
         "flightphp/core": "^3.0",
         "flightphp/active-record": ">=0.7",
         "enlivenapp/flight-csrf": "^0.2",
