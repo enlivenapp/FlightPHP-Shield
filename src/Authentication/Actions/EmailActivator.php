@@ -70,6 +70,9 @@ class EmailActivator implements ActionInterface
 
         // Activate the user
         $user->activate();
+        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        // Explicit dirty(): typed property assignment bypasses __set().
+        $user->dirty(['active' => true, 'updated_at' => $user->updated_at]);
         $user->save();
 
         $redirect = $app->get('enlivenapp.flight-shield')['redirects']['after_register'] ?? '/';

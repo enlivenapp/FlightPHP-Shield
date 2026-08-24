@@ -39,6 +39,32 @@ class Groups
     }
 
     /**
+     * Get a single group by ID.
+     */
+    public function findById(int $id): ?AuthGroup
+    {
+        $record = (new AuthGroup($this->pdo))
+            ->eq('id', $id)
+            ->find();
+
+        return $record->isHydrated() ? $record : null;
+    }
+
+    /**
+     * Create a group.
+     */
+    public function create(string $alias, string $title, string $description = ''): AuthGroup
+    {
+        $group = new AuthGroup($this->pdo);
+        $group->alias = strtolower(trim($alias));
+        $group->title = trim($title);
+        $group->description = trim($description);
+        $this->save($group);
+
+        return $group;
+    }
+
+    /**
      * Get all groups.
      *
      * @return AuthGroup[]
@@ -52,6 +78,11 @@ class Groups
 
     /**
      * Save (create or update) a group.
+     *
+     * All editable columns are pushed through dirty() explicitly — writes
+     * to the model's declared typed properties bypass ActiveRecord's dirty
+     * tracker, and loose property/data comparison misses value flips like
+     * description -> ''.
      */
     public function save(AuthGroup $group): void
     {
@@ -61,6 +92,14 @@ class Groups
             $group->created_at = $now;
         }
         $group->updated_at = $now;
+
+        $group->dirty([
+            'alias'       => $group->alias,
+            'title'       => $group->title,
+            'description' => $group->description,
+            'created_at'  => $group->created_at,
+            'updated_at'  => $group->updated_at,
+        ]);
 
         if (!isset($group->id)) {
             $group->insert();
@@ -182,5 +221,39 @@ class Groups
         }
 
         $record->delete();
+    }
+
+    /**
+     * Replace a group's permission set with the given aliases.
+     *
+     * Existing mappings not in the list are removed; missing ones are added.
+     * Unknown aliases (not present in auth_permissions) are skipped so a
+     * stale form submission cannot create orphan mappings.
+     */
+    public function syncPermissions(string $groupAlias, array $permissionAliases): void
+    {
+        $current = $this->permissions($groupAlias);
+        $target = [];
+
+        foreach ($permissionAliases as $alias) {
+            $alias = strtolower(trim($alias));
+            if ($alias !== '' && !in_array($alias, $target, true)) {
+                $target[] = $alias;
+            }
+        }
+
+        // Remove mappings no longer wanted
+        foreach (array_diff($current, $target) as $remove) {
+            $this->removePermission($groupAlias, $remove);
+        }
+
+        // Add mappings that don't exist yet — skip unknown permissions
+        $permissionsUtil = new Permissions($this->pdo);
+        foreach (array_diff($target, $current) as $add) {
+            if ($permissionsUtil->info($add) === null) {
+                continue;
+            }
+            $this->addPermission($groupAlias, $add);
+        }
     }
 }

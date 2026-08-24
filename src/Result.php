@@ -11,7 +11,7 @@ declare(strict_types=1);
 namespace Enlivenapp\FlightShield;
 
 /**
- * Value object representing the outcome of an authentication or authorization check.
+ * Represents the outcome of an authentication or authorization check.
  */
 class Result
 {

@@ -11,7 +11,7 @@ declare(strict_types=1);
 namespace Enlivenapp\FlightShield\Models;
 
 /**
- * Value object representing an access token or HMAC token.
+ * Represents an access token or HMAC token.
  * Wraps a UserIdentity with token-specific convenience methods.
  */
 class AccessToken

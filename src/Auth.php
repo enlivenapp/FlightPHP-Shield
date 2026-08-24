@@ -12,7 +12,11 @@ namespace Enlivenapp\FlightShield;
 
 use Enlivenapp\FlightShield\Authentication\Authentication;
 use Enlivenapp\FlightShield\Authentication\AuthenticatorInterface;
+use Enlivenapp\FlightShield\Authorization\Groups;
+use Enlivenapp\FlightShield\Authorization\Permissions;
 use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Services\UserManagement;
+use Enlivenapp\FlightShield\Services\UserStats;
 use flight\Engine;
 
 /**
@@ -20,6 +24,12 @@ use flight\Engine;
  *
  * Delegates to the active authenticator for: attempt, check, login, loginById,
  * logout, loggedIn, getUser, recordActiveDate.
+ *
+ * Also exposes Shield's high-level management APIs:
+ *   users()       - user administration (list/find/create/update/activate/delete)
+ *   groups()      - group administration (CRUD + permission assignment)
+ *   permissions() - permission administration (CRUD)
+ *   stats()       - user/login statistics
  */
 class Auth
 {
@@ -27,6 +37,11 @@ class Auth
     protected ?AuthenticatorInterface $authenticator = null;
     protected Engine $app;
     protected array $config;
+
+    protected ?UserManagement $usersService = null;
+    protected ?Groups $groupsService = null;
+    protected ?Permissions $permissionsService = null;
+    protected ?UserStats $statsService = null;
 
     public function __construct(Engine $app, array $config)
     {
@@ -97,5 +112,57 @@ class Auth
     public function recordActiveDate(): void
     {
         $this->getAuthenticator()->recordActiveDate();
+    }
+
+    // -----------------------------------------------------------------
+    // Management APIs (per-request singletons)
+    // -----------------------------------------------------------------
+
+    /**
+     * User administration: list, find, create, update, activate, delete.
+     */
+    public function users(): UserManagement
+    {
+        if ($this->usersService === null) {
+            $this->usersService = new UserManagement($this->app->db(), $this->config);
+        }
+
+        return $this->usersService;
+    }
+
+    /**
+     * Group administration: CRUD and permission assignment.
+     */
+    public function groups(): Groups
+    {
+        if ($this->groupsService === null) {
+            $this->groupsService = new Groups($this->app->db());
+        }
+
+        return $this->groupsService;
+    }
+
+    /**
+     * Permission administration: CRUD.
+     */
+    public function permissions(): Permissions
+    {
+        if ($this->permissionsService === null) {
+            $this->permissionsService = new Permissions($this->app->db());
+        }
+
+        return $this->permissionsService;
+    }
+
+    /**
+     * User and login statistics.
+     */
+    public function stats(): UserStats
+    {
+        if ($this->statsService === null) {
+            $this->statsService = new UserStats($this->app->db());
+        }
+
+        return $this->statsService;
     }
 }

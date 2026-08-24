@@ -18,6 +18,7 @@ use Enlivenapp\FlightShield\Models\UserIdentity;
 use Enlivenapp\FlightShield\Exceptions\AuthenticationException;
 use Enlivenapp\FlightShield\Passwords\Passwords;
 use Enlivenapp\FlightShield\Result;
+use Enlivenapp\FlightSessions\SessionManager;
 use flight\Engine;
 
 class Session implements AuthenticatorInterface
@@ -39,6 +40,9 @@ class Session implements AuthenticatorInterface
     protected ?User $user = null;
     protected int $userState = self::STATE_UNKNOWN;
     protected Passwords $passwords;
+
+    /** @var SessionManager|null Resolved lazily via sessions() */
+    protected ?SessionManager $store = null;
 
     public function __construct(Engine $app, array $config)
     {
@@ -86,6 +90,8 @@ class Session implements AuthenticatorInterface
         if ($identity && $this->passwords->needsRehash($identity->secret2)) {
             $identity->secret2 = $this->passwords->hash($credentials['password']);
             $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            // Explicit dirty(): typed property assignment bypasses __set().
+            $identity->dirty(['secret2' => $identity->secret2, 'updated_at' => $identity->updated_at]);
             $identity->save();
         }
 
@@ -149,7 +155,7 @@ class Session implements AuthenticatorInterface
         $this->regenerateSession();
 
         $sessionField = $this->config['session']['field'] ?? 'user';
-        $_SESSION[$sessionField] = $user->id;
+        $this->sessions()->setUserContext((int) $user->id)->set($sessionField, $user->id);
 
         $this->user = $user;
         $this->userState = self::STATE_LOGGED_IN;
@@ -178,7 +184,7 @@ class Session implements AuthenticatorInterface
             $this->clearCookie($cookieName);
         }
 
-        unset($_SESSION[$sessionField], $_SESSION['auth_action']);
+        $this->sessions()->delete($sessionField)->delete('auth_action')->setUserContext(null);
 
         $this->regenerateSession();
 
@@ -227,12 +233,13 @@ class Session implements AuthenticatorInterface
     public function getPendingUser(): ?User
     {
         $sessionField = $this->config['session']['field'] ?? 'user';
+        $store = $this->sessions();
 
-        if (! isset($_SESSION[$sessionField])) {
+        if (! $store->has($sessionField)) {
             return null;
         }
 
-        return $this->getUserModel()->findById($_SESSION[$sessionField]);
+        return $this->getUserModel()->findById($store->get($sessionField));
     }
 
     public function isPending(): bool
@@ -244,8 +251,9 @@ class Session implements AuthenticatorInterface
     public function startAction(string $actionClass, User $user): void
     {
         $sessionField = $this->config['session']['field'] ?? 'user';
-        $_SESSION[$sessionField] = $user->id;
-        $_SESSION['auth_action'] = $actionClass;
+        $this->sessions()->setUserContext((int) $user->id)
+            ->set($sessionField, $user->id)
+            ->set('auth_action', $actionClass);
 
         $this->user = $user;
         $this->userState = self::STATE_PENDING;
@@ -253,7 +261,7 @@ class Session implements AuthenticatorInterface
 
     public function getAction(): ?object
     {
-        $actionClass = $_SESSION['auth_action'] ?? null;
+        $actionClass = $this->sessions()->get('auth_action');
 
         if ($actionClass === null || ! class_exists($actionClass)) {
             return null;
@@ -268,12 +276,12 @@ class Session implements AuthenticatorInterface
 
     public function hasAction(int|string $userId): bool
     {
-        return isset($_SESSION['auth_action']);
+        return $this->sessions()->has('auth_action');
     }
 
     public function completeAction(): void
     {
-        unset($_SESSION['auth_action'], $_SESSION['2fa_code_sent']);
+        $this->sessions()->delete('auth_action')->delete('2fa_code_sent');
         $this->regenerateSession();
         $this->userState = self::STATE_LOGGED_IN;
     }
@@ -395,8 +403,9 @@ class Session implements AuthenticatorInterface
         }
 
         $sessionField = $this->config['session']['field'] ?? 'user';
+        $store = $this->sessions();
 
-        if (! isset($_SESSION[$sessionField])) {
+        if (! $store->has($sessionField)) {
             if ($this->config['session']['allow_remembering'] ?? true) {
                 $this->checkRememberMe();
             }
@@ -407,18 +416,18 @@ class Session implements AuthenticatorInterface
             return;
         }
 
-        $userId = $_SESSION[$sessionField];
+        $userId = $store->get($sessionField);
         $user = $this->getUserModel()->findById($userId);
 
         if ($user === null) {
-            unset($_SESSION[$sessionField]);
+            $store->delete($sessionField);
             $this->userState = self::STATE_ANONYMOUS;
             return;
         }
 
         $this->user = $user;
 
-        if (isset($_SESSION['auth_action'])) {
+        if ($store->has('auth_action')) {
             $this->userState = self::STATE_PENDING;
         } else {
             $this->userState = self::STATE_LOGGED_IN;
@@ -465,23 +474,49 @@ class Session implements AuthenticatorInterface
 
     protected function ensureSession(): void
     {
-        if (session_status() === PHP_SESSION_NONE && php_sapi_name() !== 'cli') {
-            $secure = $this->app->get('flight.force_https') === true;
-
-            session_start([
-                'cookie_httponly'  => true,
-                'cookie_secure'   => $secure,
-                'cookie_samesite' => 'Lax',
-                'use_strict_mode' => true,
-            ]);
+        if (php_sapi_name() !== 'cli' && ! $this->sessions()->isActive()) {
+            $this->sessions()->start();
         }
     }
 
     protected function regenerateSession(): void
     {
-        if (php_sapi_name() !== 'cli' && session_status() === PHP_SESSION_ACTIVE) {
-            session_regenerate_id(true);
+        if (php_sapi_name() !== 'cli') {
+            $this->sessions()->regenerate(true);
         }
+    }
+
+    /**
+     * Resolve the unified session store: the 'session' service bound by
+     * enlivenapp/flight-sessions when available, otherwise a local
+     * SessionManager wired to the app database (standalone/test contexts).
+     */
+    protected function sessions(): SessionManager
+    {
+        if ($this->store !== null) {
+            return $this->store;
+        }
+
+        try {
+            $resolved = $this->app->session();
+        } catch (\Throwable) {
+            $resolved = null;
+        }
+
+        if ($resolved instanceof SessionManager) {
+            return $this->store = $resolved;
+        }
+
+        $manager = new SessionManager($this->config['session'] ?? []);
+
+        try {
+            $manager->setPdo($this->app->db());
+        } catch (\Throwable) {
+            // Storage unavailable — consumers that need persistence will
+            // get a clear error from start().
+        }
+
+        return $this->store = $manager;
     }
 
     protected function clearCookie(string $name): void

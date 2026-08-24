@@ -12,7 +12,7 @@ namespace Enlivenapp\FlightShield\Commands;
 
 use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Models\UserIdentity;
-use Enlivenapp\FlightShield\Passwords\Passwords;
+use Enlivenapp\FlightShield\Services\UserManagement;
 use flight\commands\AbstractBaseCommand;
 
 class ShieldUserCommand extends AbstractBaseCommand
@@ -22,7 +22,7 @@ class ShieldUserCommand extends AbstractBaseCommand
         parent::__construct('shield:user', 'Manage Shield users', $config);
 
         $this
-            ->argument('[action]', 'Action: create, activate, deactivate, delete, password, changename, changeemail, list, addgroup, removegroup')
+            ->argument('[action]', 'Action: create, activate, deactivate, delete, password, changename, changeemail, list, show, addgroup, removegroup')
             ->option('-n --name', 'Username')
             ->option('-e --email', 'User email')
             ->option('-g --group', 'Group name')
@@ -37,6 +37,7 @@ class ShieldUserCommand extends AbstractBaseCommand
                 '<bold>  shield:user changename</end> <comment>-n username --new-name newusername</end><eol/>' .
                 '<bold>  shield:user changeemail</end> <comment>-n username --new-email new@example.com</end><eol/>' .
                 '<bold>  shield:user list</end><eol/>' .
+                '<bold>  shield:user show</end> <comment>-n username</end><eol/>' .
                 '<bold>  shield:user addgroup</end> <comment>-n username -g admin</end><eol/>' .
                 '<bold>  shield:user removegroup</end> <comment>-n username -g admin</end>'
             );
@@ -66,6 +67,7 @@ class ShieldUserCommand extends AbstractBaseCommand
             'changename'  => $this->changeName($io, $name, $email, $newName),
             'changeemail' => $this->changeEmail($io, $name, $email, $newEmail),
             'list'        => $this->listUsers($io),
+            'show'        => $this->showUser($io, $name, $email),
             'addgroup'    => $this->modifyGroup($io, $name, $email, $group, 'add'),
             'removegroup' => $this->modifyGroup($io, $name, $email, $group, 'remove'),
             default       => $io->error("Unknown action: {$action}", true),
@@ -99,26 +101,12 @@ class ShieldUserCommand extends AbstractBaseCommand
 
         $group = $group ?? 'user';
 
-        $passwords = new Passwords();
-        $hash = $passwords->hash($password);
+        $result = $this->users()->create((string) $name, (string) $email, $password, $group);
 
-        $user = new User(\Flight::db());
-        $user->username   = $name ?: null;
-        $user->active     = true;
-        $user->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $user->insert();
-
-        $identity = new UserIdentity(\Flight::db());
-        $identity->user_id    = $user->id;
-        $identity->type       = UserIdentity::TYPE_EMAIL_PASSWORD;
-        $identity->secret     = $email;
-        $identity->secret2    = $hash;
-        $identity->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $identity->insert();
-
-        $user->addGroup($group);
+        if (! $result->isOK()) {
+            $io->error($result->reason() ?? 'User could not be created.', true);
+            return;
+        }
 
         $io->info("User \"{$name}\" created and added to group \"{$group}\".", true);
     }
@@ -128,9 +116,7 @@ class ShieldUserCommand extends AbstractBaseCommand
         $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
-        $user->active     = $active;
-        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $user->save();
+        $this->users()->setActive($user, $active);
 
         $status = $active ? 'activated' : 'deactivated';
         $io->info("User \"{$user->username}\" {$status}.", true);
@@ -141,9 +127,7 @@ class ShieldUserCommand extends AbstractBaseCommand
         $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
-        $user->deleted_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $user->save();
+        $this->users()->delete($user);
 
         $io->info("User \"{$user->username}\" deleted (soft).", true);
     }
@@ -167,19 +151,12 @@ class ShieldUserCommand extends AbstractBaseCommand
             return;
         }
 
-        $passwords = new Passwords();
+        $result = $this->users()->updateProfile($user, ['password' => $password]);
 
-        $identityModel = new UserIdentity(\Flight::db());
-        $identity = $identityModel->getEmailIdentity($user);
-
-        if ($identity === null) {
-            $io->error('No email identity found for this user.', true);
+        if (! $result->isOK()) {
+            $io->error($result->reason() ?? 'Password could not be updated.', true);
             return;
         }
-
-        $identity->secret2    = $passwords->hash($password);
-        $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $identity->save();
 
         $io->info("Password updated for \"{$user->username}\".", true);
     }
@@ -195,9 +172,13 @@ class ShieldUserCommand extends AbstractBaseCommand
         }
 
         $oldName = $user->username;
-        $user->username   = $newName;
-        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $user->save();
+
+        $result = $this->users()->updateProfile($user, ['username' => $newName]);
+
+        if (! $result->isOK()) {
+            $io->error($result->reason() ?? 'Username could not be changed.', true);
+            return;
+        }
 
         $io->info("Username changed from \"{$oldName}\" to \"{$newName}\".", true);
     }
@@ -212,20 +193,53 @@ class ShieldUserCommand extends AbstractBaseCommand
             return;
         }
 
-        $identityModel = new UserIdentity(\Flight::db());
-        $identity = $identityModel->getEmailIdentity($user);
+        $oldEmail = $this->users()->getEmail($user);
 
-        if ($identity === null) {
-            $io->error('No email identity found for this user.', true);
+        $result = $this->users()->updateProfile($user, ['email' => $newEmail]);
+
+        if (! $result->isOK()) {
+            $io->error($result->reason() ?? 'Email could not be changed.', true);
             return;
         }
 
-        $oldEmail = $identity->secret;
-        $identity->secret     = $newEmail;
-        $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $identity->save();
-
         $io->info("Email changed from \"{$oldEmail}\" to \"{$newEmail}\".", true);
+    }
+
+    protected function showUser($io, ?string $name, ?string $email): void
+    {
+        $user = $this->findUser($io, $name, $email);
+        if ($user === null) return;
+
+        $users = $this->users();
+        $emailAddr = $users->getEmail($user);
+
+        $identity = null;
+        if ($emailAddr !== null) {
+            $identity = (new UserIdentity(\Flight::db()))->getEmailIdentity($user);
+        }
+
+        $io->bold("User #{$user->id}", true);
+        $io->write('Username:    ' . ($user->username ?? '-'), true);
+        $io->write('Email:       ' . ($emailAddr ?? '-'), true);
+        $io->write('Active:      ' . ($user->active ? 'Yes' : 'No'), true);
+        $io->write('Deleted:     ' . ($user->deleted_at ?? 'No'), true);
+
+        if ($identity !== null) {
+            $io->write('Force reset: ' . ($identity->force_reset ? 'Yes' : 'No'), true);
+            $io->write('Last login:  ' . ($identity->last_used_at ?? 'never'), true);
+        }
+
+        $io->write('Created:     ' . ($user->created_at ?? '-'), true);
+        $io->write('Updated:     ' . ($user->updated_at ?? '-'), true);
+
+        $groups = $user->getGroups();
+        $io->write('Groups:      ' . (empty($groups) ? 'none' : implode(', ', $groups)), true);
+
+        $perms = $user->getPermissions();
+        $io->write('Permissions: ' . (empty($perms) ? 'none' : implode(', ', $perms)), true);
+
+        $denied = $user->getDeniedPermissions();
+        $io->write('Denied:      ' . (empty($denied) ? 'none' : implode(', ', $denied)), true);
     }
 
     protected function listUsers($io): void
@@ -276,5 +290,13 @@ class ShieldUserCommand extends AbstractBaseCommand
         }
 
         return $user;
+    }
+
+    protected function users(): UserManagement
+    {
+        return new UserManagement(
+            \Flight::db(),
+            \Flight::app()->get('enlivenapp.flight-shield') ?? []
+        );
     }
 }

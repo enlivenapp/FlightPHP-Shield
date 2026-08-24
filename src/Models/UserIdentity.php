@@ -356,6 +356,8 @@ class UserIdentity extends \flight\ActiveRecord
         }
 
         $identity->expires = $expiresAt;
+        // Explicit dirty(): covers null-clearing when $data lacks the key.
+        $identity->dirty(['expires' => $expiresAt]);
         $identity->save();
 
         return true;
@@ -370,6 +372,9 @@ class UserIdentity extends \flight\ActiveRecord
         }
 
         $identity->force_reset = $force;
+        // Explicit dirty(): typed property assignment bypasses __set(),
+        // and loose comparison misses bool flips (force_reset true -> false == 0/'0').
+        $identity->dirty(['force_reset' => $force]);
         $identity->save();
     }
 }

@@ -260,6 +260,7 @@ class ShieldHmacCommand extends AbstractBaseCommand
             }
 
             $identity->secret2 = $encrypter->encrypt($identity->secret2);
+            $identity->dirty(['secret2' => $identity->secret2]);
             $identity->save();
             $io->info("id: {$identity->id}, encrypted.", true);
         }
@@ -277,6 +278,7 @@ class ShieldHmacCommand extends AbstractBaseCommand
             }
 
             $identity->secret2 = $encrypter->decrypt($identity->secret2);
+            $identity->dirty(['secret2' => $identity->secret2]);
             $identity->save();
             $io->info("id: {$identity->id}, decrypted.", true);
         }
@@ -296,6 +298,7 @@ class ShieldHmacCommand extends AbstractBaseCommand
             $identity->secret2 = $encrypter->encrypt(
                 $encrypter->decrypt($identity->secret2)
             );
+            $identity->dirty(['secret2' => $identity->secret2]);
             $identity->save();
             $io->info("id: {$identity->id}, re-encrypted.", true);
         }
@@ -314,6 +317,7 @@ class ShieldHmacCommand extends AbstractBaseCommand
             }
 
             $identity->expires = $now;
+            $identity->dirty(['expires' => $now]);
             $identity->save();
             $io->info("id: {$identity->id}, set as expired.", true);
         }

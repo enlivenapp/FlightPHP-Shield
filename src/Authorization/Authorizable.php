@@ -162,6 +162,9 @@ trait Authorizable
 
         if ($existing->isHydrated()) {
             $existing->deny = $deny;
+            // Explicit dirty(): typed property assignment bypasses __set(),
+            // and loose comparison misses bool flips (deny true -> false == 0/'0').
+            $existing->dirty(['deny' => $deny]);
             $existing->save();
         } else {
             $record = new PermissionUser(\Flight::db());
@@ -249,6 +252,11 @@ trait Authorizable
      */
     public function can(string $permission): bool
     {
+        // Superadmin bypasses all permission checks
+        if ($this->inGroup('superadmin')) {
+            return true;
+        }
+
         // 1. Direct deny overrides everything
         $denied = $this->getDeniedPermissions();
         if ($this->matchesPermission($permission, $denied)) {

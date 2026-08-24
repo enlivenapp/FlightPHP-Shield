@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Commands;
 
+use Enlivenapp\FlightShield\Authorization\Permissions;
 use Enlivenapp\FlightShield\Models\AuthPermission;
 use flight\commands\AbstractBaseCommand;
 
@@ -106,6 +107,10 @@ class ShieldPermissionCommand extends AbstractBaseCommand
         }
 
         $perm->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        // Explicit dirty(): typed property assignment bypasses __set().
+        $perm->dirty($description !== null
+            ? ['description' => $description, 'updated_at' => $perm->updated_at]
+            : ['updated_at' => $perm->updated_at]);
         $perm->save();
 
         $io->info("Permission \"{$alias}\" updated.", true);
@@ -125,7 +130,9 @@ class ShieldPermissionCommand extends AbstractBaseCommand
             return;
         }
 
-        $perm->delete();
+        // Delete via the utility so group mappings and direct
+        // grants/denies are cleaned up along with the permission.
+        (new Permissions(\Flight::db()))->delete($alias);
 
         $io->info("Permission \"{$alias}\" deleted.", true);
     }

@@ -12,14 +12,14 @@
 
 **I noticed folks downloading some of these packages. I'm super grateful, Thank You!  I would like to let folks know until this notice disappears I'm doing a lot of breaking changes without worrying about them.  Once versions are up around 0.5.x things should settle down.**
 
-- additionally, we're waiting on a PR before this package works properly without the AR/fix branch goofiness.
 
-Flight Shield is an authentication and authorization plugin for [FlightPHP](https://flightphp.com/), ported and adapted from CodeIgniter Shield. It integrates into the [flight-school](https://github.com/enlivenapp/flight-school) plugin lifecycle and provides session login, access token authentication, HMAC-SHA256 request signing, JWT verification, role-based groups and permissions, password validation, and a full set of route-level middlewares - all wired into FlightPHP with minimal configuration.
+Flight Shield is an authentication and authorization plugin for [FlightPHP](https://flightphp.com/), ported and adapted from [CodeIgniter4 Shield](https://github.com/codeigniter4/shield) around v1.2. We watch for security patches, but we've made significant functionality additions. It integrates into [FlightPHP](https://github.com/flightphp/core) used by [Pubvana CMS v3](https://github.com/Pubvana-CMS/pubvana) and provides session login, access token authentication, HMAC-SHA256 request signing, JWT verification, role-based groups and permissions, password validation, and route-level middlewares.
 
 ---
 
 ## Features
 
+- Database-backed sessions with AES-256-GCM encrypted payloads (via `enlivenapp/flight-sessions`)
 - Session-based authentication (login, logout, remember me with token rotation)
 - Access token authentication (Bearer tokens in the `Authorization` header)
 - HMAC-SHA256 API authentication with AES-256-GCM encrypted secrets at rest and replay protection
@@ -46,9 +46,9 @@ Flight Shield is an authentication and authorization plugin for [FlightPHP](http
 
 - PHP 8.1+
 - `flightphp/core` ^3.0
-- `enlivenapp/flight-school` ^0.2
-- `enlivenapp/flight-csrf` ^0.1
-- `enlivenapp/flight-settings` ^0.1
+- `flightphp/active-record` >=0.7 - all Shield models extend `\flight\ActiveRecord`
+- `enlivenapp/flight-csrf` ^0.2
+- `enlivenapp/flight-sessions` ^0.1 - database-backed session storage (all session state lives in SQL with encrypted payloads)
 - `firebase/php-jwt` ^6.0 *(optional, required only for JWT authentication)*
 
 ---
@@ -61,33 +61,39 @@ Flight Shield is an authentication and authorization plugin for [FlightPHP](http
 composer require enlivenapp/flight-shield
 ```
 
-**2. Enable the plugin in your flight-school config**
+**2. Enable the plugins in your app config**
 
-In `app/config/config.php`, add the plugin to the `plugins` array:
+In `app/config/config.php`, register the plugin entries. Priority ordering matters: the sessions plugin must start before Shield uses it, and CSRF must start after both.
 
 ```php
 'plugins' => [
-    'enlivenapp/flight-shield' => [],
+    'enlivenapp/flight-sessions' => [
+        'enabled'        => true,
+        'priority'       => 2,
+        'encryption_key' => '', // set via SESSION_ENCRYPTION_KEY in .env, which takes precedence
+    ],
+    'enlivenapp/flight-shield'   => ['enabled' => true, 'priority' => 5],
+    'enlivenapp/flight-csrf'     => ['enabled' => true, 'priority' => 10],
 ],
 ```
 
-On first run, `Plugin::register()` calls `ensureAppConfig()`, which inspects your config file and automatically appends `hmac` and `jwt` stub entries inside the shield plugin block if they are not already present. This happens transparently - you will see the entries in your config file after the first request.
+On first run, `Plugin::register()` calls `ensureAppConfig()`, which inspects your config file and automatically appends `hmac` and `jwt` stub entries inside the shield plugin block if they are not already present. After the first request the entries appear in your config file.
 
-Shield also uses Flight School's return-array config format in `src/Config/Config.php`. The defaults from that file are stored on `$app` under `enlivenapp.flight-shield`, and the route prefix is defined there with `'routePrepend' => 'auth'`.
+Shield's defaults live in its own `src/Config/Config.php`. The PluginLoader merges that file with any overrides you place in your app config file and stores the result on `$app` under `enlivenapp.flight-shield`; the route prefix is defined there with `'routePrepend' => 'auth'`.
 
 **3. Run the migrations**
 
-Shield ships two PHP migration classes under `src/Database/Migrations/`. Run them via the `enlivenapp/migrations` runway command:
+Shield ships two PHP migration classes under `src/Database/Migrations/` (plus seed data in `src/Database/Seeds/`). Run all pending migrations across every module with the `enlivenapp/migrations` runway command:
 
 ```bash
-php runway migrate:single enlivenapp/flight-shield
+php vendor/bin/runway migrate:all
 ```
 
-This creates the following tables: `users`, `auth_identities`, `auth_logins`, `auth_token_logins`, `auth_remember_tokens`, `auth_groups_users`, `auth_permissions_users`, `auth_groups`, `auth_permissions`, `auth_group_permissions`.
+This creates the following tables: `users`, `auth_identities`, `auth_logins`, `auth_token_logins`, `auth_remember_tokens`, `auth_groups_users`, `auth_permissions_users`, `auth_groups`, `auth_permissions`, `auth_group_permissions`. Applications that apply pending migrations during boot (Pubvana does) pick these up on first request without the CLI step.
 
 **4. Seed default groups and permissions**
 
-Default groups, permissions, and group-permission mappings are declared as seed data in `Plugin::$seeds`. These are applied automatically by enlivenapp/migrations when flight-school calls `handleActivate()` during plugin activation. There is no separate CLI step - enabling the plugin through the flight-school lifecycle is what fires the seeds.
+Default groups, permissions, and group-permission mappings are declared as seed data in `Plugin::$seeds` / the package `Seeds` directory. They are applied automatically by enlivenapp/migrations whenever migrations run - there is no separate CLI step.
 
 The seeds populate:
 
@@ -144,11 +150,46 @@ $id = user_id(); // returns int|string|null
 
 ---
 
+## Management APIs
+
+For app-level administration (user/group/permission CRUD), Shield exposes high-level services through the `Auth` facade. These services wrap the models and enforce validation and consistency rules; prefer them over calling models directly.
+
+| Accessor | Class | Purpose |
+|----------|-------|---------|
+| `auth()->users()` | `Services\UserManagement` | List/find/create users, profile updates (username/email/password with validation + hashing), activate/deactivate, soft delete |
+| `auth()->groups()` | `Authorization\Groups` | Group CRUD, permission assignment/sync, delete with membership fallback to `user` |
+| `auth()->permissions()` | `Authorization\Permissions` | Permission CRUD; deletes also clean group mappings and direct grants/denies |
+| `auth()->stats()` | `Services\UserStats` | User/login statistics |
+
+```php
+$auth = Flight::auth();
+
+// Superadmin visibility convention: superadmins see everyone,
+// everyone else sees non-superadmins only.
+$isSuper = $auth->user()?->inGroup('superadmin') ?? false;
+
+$result = $auth->users()->create($username, $email, $password, 'editor');
+if ($result->isOK()) {
+    $user = $result->extraInfo();
+} else {
+    echo $result->reason();
+}
+
+$auth->users()->paginated($page, 20, $isSuper);
+$auth->users()->updateProfile($user, ['email' => $newEmail, 'password' => $newPassword]);
+$auth->groups()->syncPermissions('editor', ['posts.create', 'posts.edit']);
+$auth->permissions()->create('posts.create', 'Create blog posts');
+```
+
+`UserManagement::create()`, `updateProfile()`, and similar operations return a `Result` (`isOK()`, `reason()`, `extraInfo()`). Password changes run through the configured password validators before hashing; duplicate email addresses are rejected.
+
+---
+
 ## How It Works
 
 ### Architecture overview
 
-`Plugin::register()` registers the `Auth` facade as a Flight service (`$app->auth()`). The `Auth` class delegates every call to the currently active `AuthenticatorInterface` instance, obtained from `Authentication::factory()`. The factory resolves the alias (`session`, `tokens`, `hmac`, `jwt`) against the `authenticators` map in config and returns a singleton per request.
+`Plugin::register()` registers the `Auth` facade as a Flight service (`$app->auth()`). The `Auth` class delegates every call to the currently active `AuthenticatorInterface` instance, obtained from `Authentication::factory()`. The factory resolves the alias (`session`, `tokens`, `hmac`, `jwt`) against the `authenticators` map in config and returns a singleton per request. All models extend [`flightphp/active-record`](https://github.com/flightphp/active-record) (`\flight\ActiveRecord`).
 
 The four authenticators are:
 
@@ -171,7 +212,11 @@ Password validation is a pipeline of `ValidatorInterface` classes run in order. 
 
 ## Session Authentication
 
-The `Session` authenticator stores the authenticated user's ID in `$_SESSION[$field]` (default key: `user`). On login, the session ID is regenerated. On logout, the session key and any pending action key are removed and the session is regenerated again.
+Shield does not manage PHP's native file sessions. All session state - login keys, pending 2FA/activation actions, CSRF tokens, flash data - lives in the database through [`enlivenapp/flight-sessions`](https://github.com/enlivenapp/FlightPHP-Sessions). That package binds a `SessionManager` as `$app->session()` and registers a `SessionHandlerInterface` over PDO, so PHP's native session mechanics (`$_SESSION`, `session_regenerate_id()`) keep working transparently while storage is SQL.
+
+Payloads are encrypted at rest with AES-256-GCM (`enc1:` prefixed rows in the `sessions` table). Configure the key via `SESSION_ENCRYPTION_KEY` in `.env`; on web requests a missing key halts the app with a setup screen rather than silently storing plaintext. Session rows also record `user_id`, IP address, user agent, and `last_activity`, enabling per-user session listings and remote logout.
+
+The `Session` authenticator stores the authenticated user's ID under `$config['session.field']` (default key: `user`). On login, the session ID is regenerated and the row is bound to the user. On logout, the session keys (`user`, `auth_action`) are removed, the user binding is cleared, and the session is regenerated again.
 
 ### Remember me
 
@@ -239,7 +284,7 @@ HMAC-SHA256(secret, timestamp + "\n" + raw_request_body)
 
 **HMAC secrets at rest**
 
-Secrets are stored in `auth_identities.secret2` encrypted with AES-256-GCM. Encryption keys live in `app/config/config.php` under `hmac.encryption_keys` (never in the database). The active key is identified by `hmac.encryption_current_key`.
+Secrets are stored in `auth_identities.secret2` encrypted with AES-256-GCM. Encryption keys live in `app/config/config.php` under `hmac.encryption_keys` (never in the database). The active key is identified by `hmac.encryption_current_key`. Because these are secrets, prefer keeping them out of version control - your app's `.env` loader can inject them into the config array at boot (see how `SESSION_ENCRYPTION_KEY` is mapped in Pubvana's bootstrap for the pattern).
 
 Use `shield:hmac` CLI commands to set up and rotate keys (see CLI Commands section).
 
@@ -249,7 +294,7 @@ Use `shield:hmac` CLI commands to set up and rotate keys (see CLI Commands secti
 
 The `JWT` authenticator is stateless. It reads `Authorization: Bearer <token>`, parses and verifies the JWT using `JWTManager` (which wraps `firebase/php-jwt`), extracts the `sub` claim as the user ID, and loads the user from the database.
 
-JWT is **not enabled by default**. To enable it:
+JWT is not enabled by default. To enable it:
 
 1. Install the dependency: `composer require firebase/php-jwt ^6.0`
 2. Add `jwt` to the `authenticators` map in your plugin config:
@@ -333,11 +378,11 @@ The `User` model methods that support this:
 
 Pass `$currentUser->inGroup('superadmin')` as the flag so superadmins see everyone and non-superadmins see only non-superadmin users.
 
-**Note:** Filtering is done post-fetch in PHP (not at the query level) due to ActiveRecord limitations with table-qualified column names in WHERE clauses. For paginated results, this means a page may contain slightly fewer results than `$perPage` if superadmin users were in the batch. This is a negligible edge case in practice.
+**Note:** Filtering is done post-fetch in PHP (not at the query level) due to ActiveRecord limitations with table-qualified column names in WHERE clauses. For paginated results, this means a page may contain fewer results than `$perPage` if superadmin users were in the batch.
 
 ### Default seeds
 
-When the plugin is activated through flight-school's lifecycle, the following seed data is inserted:
+The following seed data is inserted automatically whenever migrations run (enlivenapp/migrations applies package seed classes alongside migrations):
 
 **Groups:** `superadmin`, `admin`, `user`
 
@@ -354,18 +399,25 @@ When the plugin is activated through flight-school's lifecycle, the following se
 $user = auth()->user();
 
 // Check group membership
-$user->inGroup('admin');            // true if in 'admin'
+$user->inGroup('admin');               // true if in 'admin'
 $user->inGroup('admin', 'superadmin'); // true if in either
 
 // Check permission
 $user->can('users.edit');
 
-// Modify (requires ORM)
-$orm = Flight::app()->orm();
-$user->addGroup('editor', $orm);
-$user->removeGroup('editor', $orm);
-$user->addPermission('posts.create', $orm);
+// Modify via the Authorizable trait (no ORM handle needed)
+$user->addGroup('editor');
+$user->removeGroup('editor');
+$user->addPermission('posts.create');
+$user->addPermission('posts.create', true); // explicit deny
+$user->removePermission('posts.create');
+
+// Or administratively through the facade services
+auth()->groups()->syncPermissions('editor', ['posts.create', 'posts.edit']);
+auth()->permissions()->create('posts.create', 'Create blog posts');
 ```
+
+Note: typed-property assignments bypass ActiveRecord's change tracking, so Shield's trait methods use explicit `dirty([...])` calls internally.
 
 ---
 
@@ -375,7 +427,7 @@ Validators run as a pipeline during registration and password changes. The defau
 
 | Validator | What it checks |
 |-----------|---------------|
-| `CompositionValidator` | Min length (default 8) and max length (128), per NIST SP 800-63B |
+| `CompositionValidator` | Min length (default 8, matching the NIST SP 800-63B minimum) and max length (128) |
 | `NothingPersonalValidator` | Password must not contain or closely match the username, email address, or reversed username. Also checks similarity via `similar_text()` against `max_similarity` (default 50%) |
 | `DictionaryValidator` | Password must not appear in the bundled 65,000-entry common-password list |
 | `PwnedValidator` | Password must not appear in the Have I Been Pwned database (uses k-anonymity API, fails open if the API is unreachable) |
@@ -531,6 +583,7 @@ Manage users.
 ```bash
 php runway shield:user create      -n admin -e admin@example.com -g superadmin
 php runway shield:user list
+php runway shield:user show        -n username
 php runway shield:user activate    -e user@example.com
 php runway shield:user deactivate  -n username
 php runway shield:user delete      -e user@example.com
@@ -540,6 +593,8 @@ php runway shield:user changeemail -n username --new-email new@example.com
 php runway shield:user addgroup    -n username -g admin
 php runway shield:user removegroup -n username -g admin
 ```
+
+All mutating subcommands delegate to `Services\UserManagement`, so CLI operations run through exactly the same validation as HTTP flows: duplicate emails are rejected, and passwords must satisfy the configured validator pipeline (`min_length`, personal-info checks, dictionary, etc.). `show` prints full detail for a user - groups, direct permissions (including denies), last login, status.
 
 ---
 
@@ -556,7 +611,10 @@ php runway shield:group delete           -a editor
 php runway shield:group permissions      -a admin
 php runway shield:group addpermission    -a editor -p posts.create
 php runway shield:group removepermission -a editor -p posts.create
+php runway shield:group syncpermissions  -a editor -p "posts.create,posts.edit"
 ```
+
+`syncpermissions` replaces the group's permission set with the given comma-separated list. Aliases that don't exist are reported and skipped; if none of the provided aliases resolve, the command aborts and the group is left unchanged.
 
 Deleting a group also removes all group-permission mappings and all user memberships. Any user left with no groups after deletion is automatically reassigned to the `user` group.
 
@@ -572,6 +630,8 @@ php runway shield:permission create -a posts.create -d "Create posts"
 php runway shield:permission update -a posts.create -d "Create blog posts"
 php runway shield:permission delete -a posts.create
 ```
+
+Deleting a permission also cleans up everything referencing it: group-permission mappings (`auth_group_permissions`) and direct user grants/denies (`auth_permissions_users`) are removed in the same operation, so no orphaned rows remain.
 
 ---
 
@@ -631,7 +691,7 @@ All options live inside the shield entry in `app/config/config.php`. The plugin 
 | `record_active_date` | `true` | Update `last_active` on every authenticated request |
 | `unused_token_lifetime` | `7776000` | Access/HMAC token inactivity TTL in seconds (90 days) |
 | `valid_login_fields` | `['email']` | Fields accepted as login identifier |
-| `personal_fields` | `[]` | Additional user fields checked by `NothingPersonalValidator` |
+| `personal_fields` | `[]` | No-op in this port: `NothingPersonalValidator` pulls username/email from the identity record itself |
 | `email_sender` | `null` | Callback for outbound emails (see Email Setup) |
 | `actions.login` | `null` | Post-login action class (`Email2FA::class` or `null`) |
 | `actions.register` | `null` | Post-register action class (`EmailActivator::class` or `null`) |
@@ -780,7 +840,8 @@ Overrideable views:
 ## Security Notes
 
 - **Passwords** - hashed with `password_hash()` using `PASSWORD_DEFAULT` (bcrypt, cost 12). Configurable to Argon2 via `algorithm`, `memory_cost`, `time_cost`, and `threads`. Passwords are automatically rehashed when cost parameters change.
-- **HMAC secrets** - stored encrypted with AES-256-GCM. Encryption keys live in `app/config/config.php`, never in the database.
+- **Session storage** - all session state lives in SQL via `enlivenapp/flight-sessions`; payloads are AES-256-GCM encrypted at rest. A missing encryption key halts web requests with a setup screen instead of falling back to plaintext.
+- **HMAC secrets** - stored encrypted with AES-256-GCM. Encryption keys live in app configuration (or better, injected from `.env`), never in the database.
 - **Token comparison** - all token and hash comparisons use `hash_equals()` to prevent timing attacks.
 - **HMAC replay protection** - requests with a timestamp more than 300 seconds from `time()` are rejected.
 - **Remember-me tokens** - split-token scheme (selector stored plain, validator stored as SHA-256 hash). Mismatch purges all tokens for the user.

@@ -33,10 +33,10 @@ class Email2FA implements ActionInterface
         $identityModel = new UserIdentity(\Flight::db());
         $existing = $identityModel->getIdentityByType($user, $this->type);
 
-        if ($existing === null || $existing->isExpired() || empty($_SESSION['2fa_code_sent'])) {
+        if ($existing === null || $existing->isExpired() || ! $app->session()->has('2fa_code_sent')) {
             $code = $this->createIdentity($user, $app);
             $this->sendCodeEmail($user, $code, $app);
-            $_SESSION['2fa_code_sent'] = true;
+            $app->session()->set('2fa_code_sent', true);
         }
 
         return $app->view()->fetch('2fa_verify');
