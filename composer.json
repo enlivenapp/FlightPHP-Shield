@@ -1,7 +1,7 @@
 {
     "name": "enlivenapp/flight-shield",
     "description": "Authentication and authorization for FlightPHP, ported from CodeIgniter Shield",
-    "type": "flightphp-plugin",
+    "type": "flightphp-foundation",
     "license": "MIT",
     "authors": [
         {
