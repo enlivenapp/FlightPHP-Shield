@@ -10,10 +10,9 @@
 
 # Flight Shield
 
-**I noticed folks downloading some of these packages. I'm super grateful, Thank You!  I would like to let folks know until this notice disappears I'm doing a lot of breaking changes without worrying about them.  Once versions are up around 0.5.x things should settle down.**
+**I noticed folks downloading some of these packages. I'm super grateful, Thank You! I would like to let folks know until this notice disappears I'm doing a lot of breaking changes without worrying about them. Once versions are up around 0.5.x things should settle down.**
 
-
-Flight Shield is an authentication and authorization plugin for [FlightPHP](https://flightphp.com/), ported and adapted from [CodeIgniter4 Shield](https://github.com/codeigniter4/shield) around v1.2. We watch for security patches, but we've made significant functionality additions. It integrates into [FlightPHP](https://github.com/flightphp/core) used by [Pubvana CMS v3](https://github.com/Pubvana-CMS/pubvana) and provides session login, access token authentication, HMAC-SHA256 request signing, JWT verification, role-based groups and permissions, password validation, and route-level middlewares.
+Flight Shield is an authentication and authorization plugin for [FlightPHP](https://flightphp.com/). It was ported and adapted from [CodeIgniter4 Shield](https://github.com/codeigniter4/shield) around v1.2. We watch for security patches, and we've made significant functionality additions. It runs inside [FlightPHP](https://github.com/flightphp/core) as used by [Pubvana CMS v3](https://github.com/Pubvana-CMS/pubvana). It gives you session login, access token auth, HMAC-SHA256 request signing, JWT verification, role-based groups and permissions, password validation, and route-level middlewares.
 
 ---
 
@@ -61,39 +60,33 @@ Flight Shield is an authentication and authorization plugin for [FlightPHP](http
 composer require enlivenapp/flight-shield
 ```
 
-**2. Enable the plugins in your app config**
+**2. Provide the override config**
 
-In `app/config/config.php`, register the plugin entries. Priority ordering matters: the sessions plugin must start before Shield uses it, and CSRF must start after both.
+Shield ships with sensible defaults in `src/Config/Config.php`. Create the override config file `app/config/shield.php` to set your own values (details in Configuration). At minimum it sets the route prefix, `'routePrepend' => 'auth'`, and you can add anything from the default config file to it.
 
 ```php
-'plugins' => [
-    'enlivenapp/flight-sessions' => [
-        'enabled'        => true,
-        'priority'       => 2,
-        'encryption_key' => '', // set via SESSION_ENCRYPTION_KEY in .env, which takes precedence
-    ],
-    'enlivenapp/flight-shield'   => ['enabled' => true, 'priority' => 5],
-    'enlivenapp/flight-csrf'     => ['enabled' => true, 'priority' => 10],
-],
+// app/config/shield.php
+return [
+    'routePrepend' => 'auth',
+    // ... your overrides here
+];
 ```
 
-On first run, `Plugin::register()` calls `ensureAppConfig()`, which inspects your config file and automatically appends `hmac` and `jwt` stub entries inside the shield plugin block if they are not already present. After the first request the entries appear in your config file.
-
-Shield's defaults live in its own `src/Config/Config.php`. The PluginLoader merges that file with any overrides you place in your app config file and stores the result on `$app` under `enlivenapp.flight-shield`; the route prefix is defined there with `'routePrepend' => 'auth'`.
+Start sessions before Shield so session state is ready at auth time. Start CSRF after both.
 
 **3. Run the migrations**
 
-Shield ships two PHP migration classes under `src/Database/Migrations/` (plus seed data in `src/Database/Seeds/`). Run all pending migrations across every module with the `enlivenapp/migrations` runway command:
+Shield ships PHP migration classes under `Database/Migrations/` (plus seed data in `Database/Seeds/`). Run all pending migrations across every module with the `enlivenapp/migrations` runway command:
 
 ```bash
-php vendor/bin/runway migrate:all
+php runway migrate:all
 ```
 
-This creates the following tables: `users`, `auth_identities`, `auth_logins`, `auth_token_logins`, `auth_remember_tokens`, `auth_groups_users`, `auth_permissions_users`, `auth_groups`, `auth_permissions`, `auth_group_permissions`. Applications that apply pending migrations during boot (Pubvana does) pick these up on first request without the CLI step.
+This creates the following tables: `users`, `auth_identities`, `auth_logins`, `auth_token_logins`, `auth_remember_tokens`, `auth_groups_users`, `auth_permissions_users`, `auth_groups`, `auth_permissions`, `auth_group_permissions`. Apps that apply pending migrations during boot pick these up on the first request, so you can skip the CLI step.
 
 **4. Seed default groups and permissions**
 
-Default groups, permissions, and group-permission mappings are declared as seed data in `Plugin::$seeds` / the package `Seeds` directory. They are applied automatically by enlivenapp/migrations whenever migrations run - there is no separate CLI step.
+Default groups, permissions, and group-permission mappings are declared as seed data in `Plugin::$seeds` / the package `Seeds` directory. They apply automatically when migrations run, so there is no separate CLI step.
 
 The seeds populate:
 
@@ -142,6 +135,11 @@ if ($user->inGroup('admin', 'superadmin')) {
 }
 ```
 
+Note: Superadmins *always* has access
+```php
+$user->can(*) = true
+```
+
 **Get the current user ID anywhere**
 
 ```php
@@ -152,7 +150,7 @@ $id = user_id(); // returns int|string|null
 
 ## Management APIs
 
-For app-level administration (user/group/permission CRUD), Shield exposes high-level services through the `Auth` facade. These services wrap the models and enforce validation and consistency rules; prefer them over calling models directly.
+For app-level administration (user/group/permission CRUD), Shield exposes management services through `Auth`. These services wrap the models and apply validation and consistency rules, so prefer them over calling the models directly.
 
 | Accessor | Class | Purpose |
 |----------|-------|---------|
@@ -164,8 +162,8 @@ For app-level administration (user/group/permission CRUD), Shield exposes high-l
 ```php
 $auth = Flight::auth();
 
-// Superadmin visibility convention: superadmins see everyone,
-// everyone else sees non-superadmins only.
+// Superadmin visibility: superadmins see everyone,
+// Superadmins are hidden from every other user group.
 $isSuper = $auth->user()?->inGroup('superadmin') ?? false;
 
 $result = $auth->users()->create($username, $email, $password, 'editor');
@@ -189,7 +187,7 @@ $auth->permissions()->create('posts.create', 'Create blog posts');
 
 ### Architecture overview
 
-`Plugin::register()` registers the `Auth` facade as a Flight service (`$app->auth()`). The `Auth` class delegates every call to the currently active `AuthenticatorInterface` instance, obtained from `Authentication::factory()`. The factory resolves the alias (`session`, `tokens`, `hmac`, `jwt`) against the `authenticators` map in config and returns a singleton per request. All models extend [`flightphp/active-record`](https://github.com/flightphp/active-record) (`\flight\ActiveRecord`).
+`Plugin::register()` registers `Auth` as a Flight service (`$app->auth()`). The `Auth` class delegates every call to the currently active `AuthenticatorInterface` instance. That instance comes from `Authentication::factory()`, which resolves the alias (`session`, `tokens`, `hmac`, `jwt`) against the `authenticators` map in config and returns a singleton per request. All models extend [`flightphp/active-record`](https://github.com/flightphp/active-record) (`\flight\ActiveRecord`).
 
 The four authenticators are:
 
@@ -202,7 +200,7 @@ The four authenticators are:
 
 JWT is not enabled by default (it is commented out in the default `authenticators` map). Add it explicitly and install `firebase/php-jwt` to use it.
 
-`ChainAuthMiddleware` iterates the `authentication_chain` list (default: `['session', 'tokens', 'hmac']`) and stops at the first authenticator that reports `loggedIn() === true`. This lets a single route accept both browser sessions and API clients.
+`ChainAuthMiddleware` iterates the `authentication_chain` list (default: `['session', 'tokens', 'hmac']`) and stops at the first authenticator that reports `loggedIn() === true`. That lets a single route accept both browser sessions and API clients.
 
 Authorization uses two parallel systems: **groups** (assigned via `auth_groups_users`) and **direct permissions** (assigned via `auth_permissions_users`). `User::can()` checks direct permissions first, then walks the user's groups and queries `auth_group_permissions` for each. Wildcard permissions (`*`, `users.*`) are supported.
 
@@ -212,11 +210,9 @@ Password validation is a pipeline of `ValidatorInterface` classes run in order. 
 
 ## Session Authentication
 
-Shield does not manage PHP's native file sessions. All session state - login keys, pending 2FA/activation actions, CSRF tokens, flash data - lives in the database through [`enlivenapp/flight-sessions`](https://github.com/enlivenapp/FlightPHP-Sessions). That package binds a `SessionManager` as `$app->session()` and registers a `SessionHandlerInterface` over PDO, so PHP's native session mechanics (`$_SESSION`, `session_regenerate_id()`) keep working transparently while storage is SQL.
+Shield stores all session state in the database through [`enlivenapp/flight-sessions`](https://github.com/enlivenapp/FlightPHP-Sessions), not PHP's native file sessions. See that package's README for how the session storage works.
 
-Payloads are encrypted at rest with AES-256-GCM (`enc1:` prefixed rows in the `sessions` table). Configure the key via `SESSION_ENCRYPTION_KEY` in `.env`; on web requests a missing key halts the app with a setup screen rather than silently storing plaintext. Session rows also record `user_id`, IP address, user agent, and `last_activity`, enabling per-user session listings and remote logout.
-
-The `Session` authenticator stores the authenticated user's ID under `$config['session.field']` (default key: `user`). On login, the session ID is regenerated and the row is bound to the user. On logout, the session keys (`user`, `auth_action`) are removed, the user binding is cleared, and the session is regenerated again.
+The `Session` authenticator stores the authenticated user's ID under `$config['session.field']` (default key: `user`). On login the session ID regenerates and the row binds to the user. On logout the session keys (`user`, `auth_action`) are removed, the user binding clears, and the session regenerates again.
 
 ### Remember me
 
@@ -231,7 +227,7 @@ Expired tokens are purged probabilistically (20% of successful remember-me login
 
 ### Post-login actions (2FA, email activation)
 
-When `actions.login` is set to an action class (e.g. `Email2FA`), `attempt()` puts the session into a `STATE_PENDING` state by storing the user ID and action class name in the session. The user is not considered fully logged in until the action is completed. The routes at `/auth/2fa` and `/auth/activate` drive this flow.
+When `actions.login` is set to an action class (e.g. `Email2FA`), `attempt()` puts the session into a `STATE_PENDING` by storing the user ID and action class name in the session. The user isn't considered fully logged in until the action completes. The routes at `/auth/2fa` and `/auth/activate` drive this flow.
 
 ### Configuration
 
@@ -250,13 +246,13 @@ When `actions.login` is set to an action class (e.g. `Email2FA`), `attempt()` pu
 
 The `AccessTokens` authenticator reads the `Authorization` header and strips the `Bearer ` prefix. It hashes the raw token with SHA-256, looks it up in `auth_identities` (type = `access_token`), and checks expiry and `unused_token_lifetime`. On success it touches `last_used_at`.
 
-Tokens are stored as identities in `auth_identities`. Use `shield:user` CLI or your own application code to generate them.
+Tokens are stored as identities in `auth_identities`. Use the `shield:user` CLI or your own application code to generate them.
 
 ---
 
 ## HMAC Authentication
 
-The `HmacSha256` authenticator authenticates API clients that sign each request rather than sending a reusable secret.
+The `HmacSha256` authenticator authenticates API clients that sign each request instead of sending a reusable secret.
 
 **Request format**
 
@@ -284,9 +280,9 @@ HMAC-SHA256(secret, timestamp + "\n" + raw_request_body)
 
 **HMAC secrets at rest**
 
-Secrets are stored in `auth_identities.secret2` encrypted with AES-256-GCM. Encryption keys live in `app/config/config.php` under `hmac.encryption_keys` (never in the database). The active key is identified by `hmac.encryption_current_key`. Because these are secrets, prefer keeping them out of version control - your app's `.env` loader can inject them into the config array at boot (see how `SESSION_ENCRYPTION_KEY` is mapped in Pubvana's bootstrap for the pattern).
+Secrets are stored in `auth_identities.secret2` encrypted with AES-256-GCM. Encryption keys live in the `hmac.encryption_keys` override block (never in the database); the active key is identified by `hmac.encryption_current_key`. These are secrets, so prefer keeping them out of version control. Your host's `.env` loader can inject them into the config array at boot.
 
-Use `shield:hmac` CLI commands to set up and rotate keys (see CLI Commands section).
+The `shield:hmac` CLI writes and rotates these keys in place into the same override config file described under Configuration. That file must already contain an empty `hmac` block. See the `shield:hmac` section below for the full workflow.
 
 ---
 
@@ -308,7 +304,7 @@ JWT is not enabled by default. To enable it:
 ],
 ```
 
-3. Configure JWT keys (auto-injected as a stub by `ensureAppConfig()`, fill in the values):
+3. Provide JWT keys in your config overrides (fill in the values):
 
 ```php
 'jwt' => [
@@ -364,11 +360,11 @@ Default chain: `['session', 'tokens', 'hmac']`. Override with `authentication_ch
 1. Direct user permissions in `auth_permissions_users`
 2. Group permissions from `auth_group_permissions` for each of the user's groups
 
-Wildcard `*` in a group's permission list matches every permission check. Partial wildcards like `users.*` match `users.create`, `users.edit`, etc.
+Wildcard `*` in a group's permission list matches every permission check. Partial wildcards like `users.*` match `users.create`, `users.edit`, and so on.
 
 ### Superadmin visibility
 
-Superadmin users are hidden from non-superadmin callers by default. This prevents lower-privilege admins from viewing, editing, or deleting superadmin accounts.
+Superadmin users are hidden from non-superadmin callers by default. That prevents lower-privilege admins from viewing, editing, or deleting superadmin accounts.
 
 The `User` model methods that support this:
 
@@ -378,7 +374,7 @@ The `User` model methods that support this:
 
 Pass `$currentUser->inGroup('superadmin')` as the flag so superadmins see everyone and non-superadmins see only non-superadmin users.
 
-**Note:** Filtering is done post-fetch in PHP (not at the query level) due to ActiveRecord limitations with table-qualified column names in WHERE clauses. For paginated results, this means a page may contain fewer results than `$perPage` if superadmin users were in the batch.
+**Note:** Filtering happens post-fetch in PHP (not at the query level) due to ActiveRecord limitations with table-qualified column names in WHERE clauses. For paginated results, a page may contain fewer results than `$perPage` if superadmin users were in the batch.
 
 ### Default seeds
 
@@ -412,7 +408,7 @@ $user->addPermission('posts.create');
 $user->addPermission('posts.create', true); // explicit deny
 $user->removePermission('posts.create');
 
-// Or administratively through the facade services
+// Or use the management services directly
 auth()->groups()->syncPermissions('editor', ['posts.create', 'posts.edit']);
 auth()->permissions()->create('posts.create', 'Create blog posts');
 ```
@@ -538,7 +534,7 @@ Flight::route('/posts/create', function () { ... })
 
 ### `ForcePasswordResetMiddleware`
 
-If the authenticated user's `requiresPasswordReset()` returns `true`, redirects to the configured `force_reset` URL. Passes through silently if the user is not logged in.
+If the authenticated user's `requiresPasswordReset()` returns `true`, redirects to the configured `force_reset` URL. Passes through silently if the user isn't logged in.
 
 ```php
 use Enlivenapp\FlightShield\Middlewares\ForcePasswordResetMiddleware;
@@ -594,7 +590,7 @@ php runway shield:user addgroup    -n username -g admin
 php runway shield:user removegroup -n username -g admin
 ```
 
-All mutating subcommands delegate to `Services\UserManagement`, so CLI operations run through exactly the same validation as HTTP flows: duplicate emails are rejected, and passwords must satisfy the configured validator pipeline (`min_length`, personal-info checks, dictionary, etc.). `show` prints full detail for a user - groups, direct permissions (including denies), last login, status.
+Every `shield:user` command that changes a user runs through the same `Services\UserManagement` logic used by the HTTP layer. So CLI calls validate identically: duplicate emails are rejected, and passwords must pass the configured validator pipeline (min length, personal-info checks, dictionary, and so on). `show` prints full detail for one user: groups, direct permissions including denies, last login, and status.
 
 ---
 
@@ -663,18 +659,23 @@ php runway shield:hmac invalidateAll # immediately expire all HMAC tokens
 listkeys → addkey → reencrypt → removekey -k <old-key-id>
 ```
 
+`init`, `addkey`, and `removekey` write to the host's `app/config/shield.php` override file. That file must already exist with an empty `hmac` block before you run them; otherwise the command reports that there is nothing to write to. The application merges this override file with the package defaults at load time.
+
 ---
 
 ## Configuration
 
-All options live inside the shield entry in `app/config/config.php`. The plugin merges these with its defaults, so you only need to include values you want to override.
+All Shield options live inside the plugin's config. The plugin merges your overrides with its defaults from `src/Config/Config.php`, so you only need to include values you want to override.
+
+Provide your overrides in the per-app override config file at `app/config/shield.php` (resolved from `PROJECT_ROOT`). The application merges it over the package defaults at load time:
 
 ```php
-'plugins' => [
-    'enlivenapp/flight-shield' => [
-        // ... your overrides here
-    ],
-],
+// app/config/shield.php - return the keys you want to override
+return [
+    'routePrepend' => 'auth',
+    'default_authenticator' => 'session',
+    // ... any other overrides
+];
 ```
 
 ### Full default configuration
@@ -772,6 +773,7 @@ All options live inside the shield entry in `app/config/config.php`. The plugin 
     'login'             => '/auth/login',
     'logout'            => '/',
     'after_login'       => '/',
+    'after_login_admin' => '/admin',
     'after_register'    => '/',
     'after_logout'      => '/auth/login',
     'force_reset'       => '/auth/reset-password',
@@ -806,7 +808,7 @@ Shield registers the following routes under the prefix defined by the returned `
 
 ## Email Setup
 
-Shield does not ship with a mailer. Provide a callback that accepts the recipient address, subject, and body:
+Shield doesn't ship with a mailer. Provide a callback that accepts the recipient address, subject, and body:
 
 ```php
 'email_sender' => function (string $to, string $subject, string $body): void {
@@ -814,17 +816,19 @@ Shield does not ship with a mailer. Provide a callback that accepts the recipien
 },
 ```
 
-The callback is invoked for 2FA codes, magic links, and email activation messages.
+The callback runs for 2FA codes, magic links, and email activation messages.
 
 ---
 
 ## Views
 
-Shield renders its own views by default. To override any view, create a matching file in your app:
+Shield renders its own views by default, shipping both `.php` and `.tpl` variants under `src/Views/`. To override any view, create a matching file under `app/Views/<plugin-id>/`. The plugin id is the package name, so `login.php` overrides to:
 
 ```
-app/views/enlivenapp/flight-shield/<view-name>.php
+app/Views/enlivenapp/flight-shield/login.php
 ```
+
+A theme can override it the same way. Replace `<active>` with the currently active theme's directory (for example `themes/default/Views/enlivenapp/flight-shield/login.php`).
 
 Overrideable views:
 
@@ -839,15 +843,23 @@ Overrideable views:
 
 ## Security Notes
 
-- **Passwords** - hashed with `password_hash()` using `PASSWORD_DEFAULT` (bcrypt, cost 12). Configurable to Argon2 via `algorithm`, `memory_cost`, `time_cost`, and `threads`. Passwords are automatically rehashed when cost parameters change.
-- **Session storage** - all session state lives in SQL via `enlivenapp/flight-sessions`; payloads are AES-256-GCM encrypted at rest. A missing encryption key halts web requests with a setup screen instead of falling back to plaintext.
-- **HMAC secrets** - stored encrypted with AES-256-GCM. Encryption keys live in app configuration (or better, injected from `.env`), never in the database.
-- **Token comparison** - all token and hash comparisons use `hash_equals()` to prevent timing attacks.
-- **HMAC replay protection** - requests with a timestamp more than 300 seconds from `time()` are rejected.
-- **Remember-me tokens** - split-token scheme (selector stored plain, validator stored as SHA-256 hash). Mismatch purges all tokens for the user.
-- **CSRF** - all mutating auth routes are protected by `CsrfMiddleware` from `enlivenapp/flight-csrf`.
-- **Rate limiting** - failed login attempts are tracked per IP across `auth_logins` and `auth_token_logins`. Excessive failures result in HTTP 429.
-- **Session fixation** - the session ID is regenerated on login and logout.
+Passwords are hashed with `password_hash()` using `PASSWORD_DEFAULT` (bcrypt, cost 12). You can switch to Argon2 via `algorithm`, `memory_cost`, `time_cost`, and `threads`. Passwords rehash automatically when the cost parameters change.
+
+Session storage is handled by `enlivenapp/flight-sessions`; see that package's README for how payloads are protected at rest.
+
+HMAC secrets are stored encrypted with AES-256-GCM. Encryption keys live in app configuration (or better, injected from `.env`), never in the database.
+
+All token and hash comparisons use `hash_equals()` to prevent timing attacks.
+
+HMAC requests with a timestamp more than 300 seconds from `time()` are rejected, which blocks replay attempts.
+
+Remember-me tokens use a split-token scheme (selector stored plain, validator stored as a SHA-256 hash). A mismatch purges all tokens for the user.
+
+All mutating auth routes are protected by `CsrfMiddleware` from `enlivenapp/flight-csrf`.
+
+Failed login attempts are tracked per IP across `auth_logins` and `auth_token_logins`. Excessive failures result in HTTP 429.
+
+The session ID regenerates on login and logout, which prevents session fixation.
 
 ---
 
