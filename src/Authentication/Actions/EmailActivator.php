@@ -13,6 +13,7 @@ namespace Enlivenapp\FlightShield\Authentication\Actions;
 use Enlivenapp\FlightShield\Authentication\Authenticators\Session;
 use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Models\UserIdentity;
+use Enlivenapp\FlightShield\Support\RobotDetector;
 use flight\Engine;
 
 class EmailActivator implements ActionInterface
@@ -21,6 +22,11 @@ class EmailActivator implements ActionInterface
 
     public function show(Engine $app): string
     {
+        if (RobotDetector::isBot($_SERVER['HTTP_USER_AGENT'] ?? '', $this->getBotDetectionConfig($app))) {
+            $app->halt(404);
+            return '';
+        }
+
         /** @var Session $authenticator */
         $authenticator = $app->auth()->getAuthenticator();
         $user = $authenticator->getPendingUser();
@@ -43,6 +49,11 @@ class EmailActivator implements ActionInterface
 
     public function verify(Engine $app): string
     {
+        if (RobotDetector::isBot($_SERVER['HTTP_USER_AGENT'] ?? '', $this->getBotDetectionConfig($app))) {
+            $app->halt(404);
+            return '';
+        }
+
         /** @var Session $authenticator */
         $authenticator = $app->auth()->getAuthenticator();
         $postedToken = $app->request()->query->token ?? $app->request()->data->token ?? '';
@@ -83,6 +94,11 @@ class EmailActivator implements ActionInterface
     public function getType(): string
     {
         return $this->type;
+    }
+
+    protected function getBotDetectionConfig(Engine $app): array
+    {
+        return $app->get('enlivenapp.flight-shield')['bot_detection'] ?? [];
     }
 
     protected function sendActivationEmail(User $user, string $code, Engine $app): void

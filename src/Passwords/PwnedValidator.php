@@ -27,7 +27,7 @@ class PwnedValidator extends BaseValidator implements ValidatorInterface
         $rangeHash  = substr($hashedPassword, 0, 5);
         $searchHash = substr($hashedPassword, 5);
 
-        $ch = curl_init("https://api.pwnedpasswords.com/range/{$rangeHash}");
+        $ch = curl_init($this->buildEndpointUrl($rangeHash));
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER     => ['Accept: text/plain'],
@@ -61,5 +61,13 @@ class PwnedValidator extends BaseValidator implements ValidatorInterface
             ->setSuccess(false)
             ->setReason("This password has appeared in {$hits} data breaches found in {$wording}.")
             ->setExtraInfo('Choose a password that has not been exposed in a data breach.');
+    }
+
+    /**
+     * Full k-anonymity range endpoint for a 5-char prefix hash.
+     */
+    protected function buildEndpointUrl(string $rangeHash): string
+    {
+        return "https://api.pwnedpasswords.com/range/{$rangeHash}";
     }
 }

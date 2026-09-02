@@ -202,7 +202,7 @@ JWT is not enabled by default (it is commented out in the default `authenticator
 
 `ChainAuthMiddleware` iterates the `authentication_chain` list (default: `['session', 'tokens', 'hmac']`) and stops at the first authenticator that reports `loggedIn() === true`. That lets a single route accept both browser sessions and API clients.
 
-Authorization uses two parallel systems: **groups** (assigned via `auth_groups_users`) and **direct permissions** (assigned via `auth_permissions_users`). `User::can()` checks direct permissions first, then walks the user's groups and queries `auth_group_permissions` for each. Wildcard permissions (`*`, `users.*`) are supported.
+Authorization uses two parallel systems: **groups** (assigned via `auth_groups_users`) and **direct permissions** (assigned via `auth_permissions_users`). `User::can()` checks direct permissions first, then walks the user's groups and queries `auth_group_permissions` for each. Matching uses hierarchical wildcard semantics: a trailing `*` grants a node and all its descendants (`users.*` grants `users.create`, `users.create.team`, …), and a middle `*` matches exactly one segment (`admin.*.post`). A standalone `*` matches nothing — use `can()` on a user in the `superadmin` group instead (that group bypasses all permission checks).
 
 Password validation is a pipeline of `ValidatorInterface` classes run in order. The first failure short-circuits the pipeline and returns an error.
 
@@ -360,7 +360,7 @@ Default chain: `['session', 'tokens', 'hmac']`. Override with `authentication_ch
 1. Direct user permissions in `auth_permissions_users`
 2. Group permissions from `auth_group_permissions` for each of the user's groups
 
-Wildcard `*` in a group's permission list matches every permission check. Partial wildcards like `users.*` match `users.create`, `users.edit`, and so on.
+Permission matching is hierarchical. A trailing `*` matches a node and every descendant (`users.*` grants `users.create`, `users.edit`, `users.edit.settings`, … but never `users` itself); a middle `*` matches exactly one segment (`admin.*.post` grants `admin.news.post` but not `admin.news.manage.post`). Wildcards are only allowed as whole segments, and a standalone `*` no longer matches everything — grant the `superadmin` group to bypass checks entirely.
 
 ### Superadmin visibility
 

@@ -19,7 +19,7 @@
         "enlivenapp/flight-sessions": "^0.1"
     },
     "suggest": {
-        "firebase/php-jwt": "Required for JWT authentication (^6.0)"
+        "firebase/php-jwt": "Required for JWT authentication (^7.0)"
     },
     "autoload": {
         "psr-4": {

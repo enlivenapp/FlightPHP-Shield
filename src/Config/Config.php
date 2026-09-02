@@ -111,10 +111,20 @@ return [
     'email_sender' => null,
 
     // Authentication actions (post-login / post-register)
-    // Set to a class implementing ActionInterface, or null to disable
+    // Set to a class implementing ActionInterface, or null/'' to disable.
+    // Actions implementing ConditionalActionInterface are only started
+    // when appliesTo() is true for the user.
     'actions' => [
         'login'    => null, // e.g. \Enlivenapp\FlightShield\Authentication\Actions\Email2FA::class
         'register' => null, // e.g. \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator::class
+    ],
+
+    // Bot detection: magic-link tokens, 2FA codes, and activation tokens
+    // are not processed for crawler User-Agents (they get 404).
+    'bot_detection' => [
+        'enabled'     => true,
+        // Extra keywords appended to the default crawler list
+        'user_agents' => [],
     ],
 
     // Valid fields for login

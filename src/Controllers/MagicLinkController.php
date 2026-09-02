@@ -14,6 +14,7 @@ use Enlivenapp\FlightShield\Authentication\Authenticators\Session;
 use Enlivenapp\FlightShield\Models\Login;
 use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Models\UserIdentity;
+use Enlivenapp\FlightShield\Support\RobotDetector;
 use flight\Engine;
 
 class MagicLinkController
@@ -108,6 +109,12 @@ class MagicLinkController
             return;
         }
 
+        // Ignore robots so they cannot consume magic-link tokens
+        if (RobotDetector::isBot($_SERVER['HTTP_USER_AGENT'] ?? '', $this->config['bot_detection'] ?? [])) {
+            $this->app->halt(404);
+            return;
+        }
+
         $token = $this->app->request()->query->token ?? '';
 
         /** @var UserIdentityRepository $identityRepo */
@@ -144,18 +151,50 @@ class MagicLinkController
             $this->app->redirect($this->config['redirects']['login'] ?? '/auth/login');
             return;
         }
-        if (!$user->isActivated()) {
-            $this->app->redirect($this->config['redirects']['login'] ?? '/auth/login');
-            return;
-        }
 
         /** @var Session $authenticator */
         $authenticator = $this->app->auth()->setAuthenticator('session')->getAuthenticator();
+
+        // Start a login action (e.g. 2FA) when one applies to this user,
+        // otherwise start the register action (email activation) for
+        // inactive users. Inactive users either way continue to an action
+        // instead of being logged straight in.
+        $started = $authenticator->startUpAction('login', $user);
+        if (! $started && ! $user->isActivated()) {
+            $started = $authenticator->startUpAction('register', $user);
+        }
+
+        if ($started) {
+            $authenticator->setPendingLoginMethod(Session::ID_TYPE_MAGIC_LINK);
+            $this->recordMagicLinkLogin($token, true, $identity->user_id);
+            $this->redirectToAction($authenticator->getAction());
+            return;
+        }
+
+        $authenticator->setPendingLoginMethod(Session::ID_TYPE_MAGIC_LINK);
         $authenticator->loginById($identity->user_id);
 
         $this->recordMagicLinkLogin($token, true, $identity->user_id);
 
         $this->app->redirect($this->config['redirects']['after_login'] ?? '/');
+    }
+
+    /**
+     * Redirect to the pending action's page, mirroring LoginController.
+     */
+    protected function redirectToAction(?object $action): void
+    {
+        if ($action instanceof \Enlivenapp\FlightShield\Authentication\Actions\Email2FA) {
+            $this->app->redirect('/auth/2fa');
+            return;
+        }
+
+        if ($action instanceof \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator) {
+            $this->app->redirect('/auth/activate');
+            return;
+        }
+
+        $this->app->redirect('/');
     }
 
     protected function recordMagicLinkLogin(string $identifier, bool $success, ?int $userId = null): void

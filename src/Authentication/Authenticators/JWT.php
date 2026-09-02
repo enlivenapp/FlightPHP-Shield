@@ -175,6 +175,11 @@ class JWT implements AuthenticatorInterface
             return;
         }
 
+        // Only record the active date for activated, non-banned users.
+        if ($this->user->isBanned() || ! $this->user->isActivated()) {
+            return;
+        }
+
         $this->user->last_active = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
         $this->user->save();
     }
@@ -210,7 +215,14 @@ class JWT implements AuthenticatorInterface
     protected function getTokenFromHeader(): string
     {
         $jwtConfig = $this->config['jwt'] ?? [];
-        $header = $jwtConfig['header'] ?? 'Authorization';
+        $header = $jwtConfig['header'] ?? null;
+
+        // The header is config-driven: when unset or empty there is no
+        // token source (no implicit Authorization fallback).
+        if ($header === null || $header === '') {
+            return '';
+        }
+
         $headerValue = $_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $header))] ?? '';
 
         if (str_starts_with($headerValue, 'Bearer')) {

@@ -249,6 +249,12 @@ trait Authorizable
      * 2. Check direct user grants — if granted, return true
      * 3. Check group permissions — if matched, return true
      * 4. Return false
+     *
+     * Matching uses the hierarchical wildcard semantics of
+     * PermissionMatcher: "users.*" grants "users.create" and every
+     * descendant, but never "users" itself. A standalone "*" grant no
+     * longer matches everything — superadmins bypass via group
+     * membership instead.
      */
     public function can(string $permission): bool
     {
@@ -259,13 +265,13 @@ trait Authorizable
 
         // 1. Direct deny overrides everything
         $denied = $this->getDeniedPermissions();
-        if ($this->matchesPermission($permission, $denied)) {
+        if (PermissionMatcher::matches($permission, $denied)) {
             return false;
         }
 
         // 2. Direct grant
         $granted = $this->getPermissions();
-        if ($this->matchesPermission($permission, $granted)) {
+        if (PermissionMatcher::matches($permission, $granted)) {
             return true;
         }
 
@@ -273,7 +279,7 @@ trait Authorizable
         $userGroups = $this->getGroups();
         foreach ($userGroups as $group) {
             $groupPerms = $this->getGroupPermissionsFromDb($group);
-            if ($this->matchesPermission($permission, $groupPerms)) {
+            if (PermissionMatcher::matches($permission, $groupPerms)) {
                 return true;
             }
         }
@@ -303,32 +309,5 @@ trait Authorizable
         );
 
         return $cache[$group];
-    }
-
-    /**
-     * Check if a permission matches a list, supporting wildcards (e.g. "users.*").
-     */
-    protected function matchesPermission(string $permission, array $permissions): bool
-    {
-        if (in_array($permission, $permissions, true)) {
-            return true;
-        }
-
-        // Wildcard: '*' matches everything
-        if (in_array('*', $permissions, true)) {
-            return true;
-        }
-
-        // Partial wildcards: "users.*" matches "users.create"
-        foreach ($permissions as $perm) {
-            if (str_contains($perm, '*')) {
-                $pattern = str_replace('*', '.*', preg_quote($perm, '/'));
-                if (preg_match('/^' . $pattern . '$/', $permission)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 }

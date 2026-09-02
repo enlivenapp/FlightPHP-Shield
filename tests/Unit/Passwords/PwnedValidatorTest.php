@@ -25,6 +25,19 @@ class PwnedValidatorTest extends TestCase
         return new PwnedValidator([]);
     }
 
+    /**
+     * Exposes the endpoint builder for assertion without network access.
+     */
+    private function makeEndpointProbe(): PwnedValidator
+    {
+        return new class([]) extends PwnedValidator {
+            public function probe(string $rangeHash): string
+            {
+                return $this->buildEndpointUrl($rangeHash);
+            }
+        };
+    }
+
     private function isApiReachable(): bool
     {
         $ch = curl_init('https://api.pwnedpasswords.com/range/00000');
@@ -118,6 +131,26 @@ class PwnedValidatorTest extends TestCase
         $result = $validator->check('any-password-string');
 
         $this->assertInstanceOf(Result::class, $result);
+    }
+
+    #[Test]
+    public function queriesHibpRangeEndpointWithPrefix(): void
+    {
+        // Pins the k-anonymity API endpoint (and that the 5-char SHA-1
+        // prefix is used) without hitting the network.
+        $validator = $this->makeEndpointProbe();
+
+        $hashedPassword = strtoupper(sha1('password'));
+        $rangeHash      = substr($hashedPassword, 0, 5);
+        $searchHash     = substr($hashedPassword, 5);
+
+        $this->assertSame(
+            'https://api.pwnedpasswords.com/range/' . $rangeHash,
+            $validator->probe($rangeHash)
+        );
+        $this->assertSame(5, strlen($rangeHash));
+        $this->assertSame(35, strlen($searchHash));
+        $this->assertMatchesRegularExpression('/^[0-9A-F]{5}$/', $rangeHash);
     }
 
     #[Test]

@@ -1,6 +1,41 @@
 # Changelog
 
+---
 
+## 0.4.0 - 2026-09-01
+
+### Credits
+
+This release ports the following CodeIgniter Shield improvements. Thanks to the
+upstream authors:
+
+- **memleakd** — hierarchical permission wildcards (`PermissionMatcher`, [shield#1327](https://github.com/codeigniter4/shield/pull/1327)); conditional auth actions (`ConditionalActionInterface`, [shield#1328](https://github.com/codeigniter4/shield/pull/1328)); magic links now respect login actions ([shield#1329](https://github.com/codeigniter4/shield/pull/1329))
+- **michalsn** — ignore robots on magic links ([shield#1294](https://github.com/codeigniter4/shield/pull/1294)); bot detection on the action controller ([shield#1295](https://github.com/codeigniter4/shield/pull/1295)); HIBP range endpoint fix in `PwnedValidator` ([shield#1372](https://github.com/codeigniter4/shield/pull/1372)); firebase/php-jwt v7 ([shield#1316](https://github.com/codeigniter4/shield/pull/1316))
+- **warcooft** — `recordActiveDate()` only for activated, non-banned users ([shield#1184](https://github.com/codeigniter4/shield/pull/1184))
+- **tomatlscomm** — remember-me cookie refresh on token restore ([shield#1306](https://github.com/codeigniter4/shield/pull/1306))
+- **najdanovicivan** — empty action class disables the action ([shield#1286](https://github.com/codeigniter4/shield/pull/1286))
+- **paulbalandan** — JWT header fallback removal / static analysis ([shield#1325](https://github.com/codeigniter4/shield/pull/1325))
+
+### Changes
+
+**Added:**
+  - src/Authorization/PermissionMatcher.php : faithful port of upstream `PermissionMatcher`. Trailing `*` grants a node and all descendants (`users.*` ⇒ `users.create`, … but never `users`); middle `*` matches exactly one segment (`admin.*.post`). Standalone `*` no longer matches everything — grant the `superadmin` group instead (that group already bypasses all checks). Old regex-based `matchesPermission()` removed
+  - src/Authentication/Actions/ConditionalActionInterface.php : actions implementing `appliesTo(User)` are only started when it returns true
+  - src/Support/RobotDetector.php : crawler detection (keyword list mirrors CI4's default robot list); magic-link tokens, 2FA codes, and activation tokens now 404 for robot User-Agents
+  - Config: `bot_detection` (`enabled`, `user_agents`); `''` (empty string) now disables an action class
+  - tests/Unit/Authorization/PermissionMatcherTest.php, tests/Unit/Support/RobotDetectorTest.php, tests/Unit/Authentication/SessionLoginMethodTest.php, tests/Integration/Authentication/SessionRememberMeRefreshTest.php, HIBP endpoint-pinning test in PwnedValidatorTest.php
+
+**Modified:**
+  - Session authenticator: `startUpAction()` / `actionApplies()` replace the direct action-class check in `attempt()`; `setPendingLoginMethod()` / `completePendingLoginMethod()` restore the `magicLogin` session marker after a pending action completes; `recordActiveDate()` only runs for activated, non-banned users
+  - MagicLinkController::verify() : starts the login action when it applies (2FA), otherwise the register action for inactive users (activation), and only then completes the passwordless login — robots are never served tokens
+  - RegisterController : registration action starts only when configured and applicable; empty action class logs the user straight in
+  - Email2FA / EmailActivator : `show()` and `verify()` return 404 to robot User-Agents
+  - SessionAuthMiddleware : banned users are logged out; inactive users are pushed to the activation action when one applies, otherwise logged out; pending (2FA/activation) users are routed to their action page instead of login
+  - AccessTokens / JWT / HmacSha256 : `recordActiveDate()` only for activated, non-banned users
+  - JWT authenticator : reads the configured `jwt.header` verbatim (no implicit `Authorization` fallback when unset)
+  - PwnedValidator : endpoint built via `buildEndpointUrl()` (URL unchanged — `https://api.pwnedpasswords.com/range/{prefix}`)
+  - composer.json (suggest) : firebase/php-jwt `^7.0` (update from ^6.0); FirebaseAdapter docblock updated. Note: php-jwt v7 invalidates tokens signed with the previous short secrets — use ≥32-byte HMAC secrets
+  - README : wildcard semantics, bot detection, conditional actions, and action-disable documented
 
 ---
 

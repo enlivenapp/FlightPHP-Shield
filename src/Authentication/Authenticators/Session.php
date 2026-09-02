@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Authentication\Authenticators;
 
+use Enlivenapp\FlightShield\Authentication\Actions\ConditionalActionInterface;
 use Enlivenapp\FlightShield\Authentication\AuthenticatorInterface;
 use Enlivenapp\FlightShield\Models\Login;
 use Enlivenapp\FlightShield\Models\RememberToken;
@@ -34,6 +35,10 @@ class Session implements AuthenticatorInterface
     public const ID_TYPE_MAGIC_LINK     = 'magic-link';
     public const ID_TYPE_EMAIL_2FA      = 'email_2fa';
     public const ID_TYPE_EMAIL_ACTIVATE = 'email_activate';
+
+    // Passwordless login session markers
+    public const MAGIC_LOGIN_TEMP_DATA = 'magicLogin';
+    public const PENDING_LOGIN_METHOD  = 'auth_action_login_method';
 
     protected Engine $app;
     protected array $config;
@@ -99,10 +104,9 @@ class Session implements AuthenticatorInterface
             $identityRepo->touchIdentity($identity);
         }
 
-        // Check for login action (2FA, activation)
-        $actionClass = $this->config['actions']['login'] ?? null;
-        if ($actionClass !== null) {
-            $this->startAction($actionClass, $user);
+        // Start the login action (2FA, activation) when configured and
+        // applicable to this user. If no action starts, log in normally.
+        if ($this->startUpAction('login', $user)) {
             $this->recordLogin($credentials, true, $user->id);
             return (new Result())->setSuccess(true)->setExtraInfo($user);
         }
@@ -159,6 +163,8 @@ class Session implements AuthenticatorInterface
 
         $this->user = $user;
         $this->userState = self::STATE_LOGGED_IN;
+
+        $this->completePendingLoginMethod();
     }
 
     public function loginById(int|string $userId): void
@@ -222,6 +228,11 @@ class Session implements AuthenticatorInterface
             return;
         }
 
+        // Only record the active date for activated, non-banned users.
+        if ($this->user->isBanned() || ! $this->user->isActivated()) {
+            return;
+        }
+
         $this->user->last_active = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
         $this->user->save();
     }
@@ -229,6 +240,73 @@ class Session implements AuthenticatorInterface
     // -----------------------------------------------------------------
     // Pending user (for actions / 2FA)
     // -----------------------------------------------------------------
+
+    /**
+     * If an action has been defined for the given type and applies to the
+     * user, start it (move the session into the pending state).
+     *
+     * @param string $type 'register', 'login'
+     */
+    public function startUpAction(string $type, User $user): bool
+    {
+        $actionClass = $this->config['actions'][$type] ?? null;
+
+        if ($actionClass === null || $actionClass === '') {
+            return false;
+        }
+
+        if (! $this->actionApplies($actionClass, $user)) {
+            return false;
+        }
+
+        $this->startAction($actionClass, $user);
+
+        return true;
+    }
+
+    /**
+     * Whether the given action class should run for the user.
+     * Conditional actions only run when appliesTo() is satisfied.
+     */
+    public function actionApplies(string $actionClass, User $user): bool
+    {
+        if (! is_subclass_of($actionClass, ConditionalActionInterface::class)) {
+            return true;
+        }
+
+        /** @var ConditionalActionInterface $action */
+        $action = new $actionClass();
+
+        return $action->appliesTo($user);
+    }
+
+    /**
+     * Marks the pending login action as originating from a passwordless
+     * login method (e.g. magic link).
+     */
+    public function setPendingLoginMethod(string $method): void
+    {
+        $this->sessions()->set(self::PENDING_LOGIN_METHOD, $method);
+    }
+
+    /**
+     * Completes the passwordless login record (magicLogin session marker)
+     * once login finished, after any pending login action.
+     */
+    protected function completePendingLoginMethod(): void
+    {
+        $method = $this->sessions()->get(self::PENDING_LOGIN_METHOD);
+
+        if ($method === null) {
+            return;
+        }
+
+        $this->sessions()->delete(self::PENDING_LOGIN_METHOD);
+
+        if ($method === self::ID_TYPE_MAGIC_LINK) {
+            $this->sessions()->set(self::MAGIC_LOGIN_TEMP_DATA, true);
+        }
+    }
 
     public function getPendingUser(): ?User
     {
@@ -282,6 +360,7 @@ class Session implements AuthenticatorInterface
     public function completeAction(): void
     {
         $this->sessions()->delete('auth_action')->delete('2fa_code_sent');
+        $this->completePendingLoginMethod();
         $this->regenerateSession();
         $this->userState = self::STATE_LOGGED_IN;
     }

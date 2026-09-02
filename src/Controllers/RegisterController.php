@@ -105,9 +105,13 @@ class RegisterController
             return;
         }
 
-        // Create user — inactive when email activation is required
+        // Create user — inactive when email activation is required. An
+        // empty action class disables the action entirely (user logs in).
         $actionClass = $this->config['actions']['register'] ?? null;
-        $requiresActivation = is_a($actionClass, \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator::class, true);
+        if ($actionClass === '') {
+            $actionClass = null;
+        }
+        $requiresActivation = is_string($actionClass) && is_a($actionClass, \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator::class, true);
 
         $user = new User(\Flight::db());
         $user->username   = $username ?: null;
@@ -127,13 +131,12 @@ class RegisterController
         $defaultGroup = $this->config['default_group'] ?? 'user';
         $user->addGroup($defaultGroup);
 
-        // Check for registration action (email activation)
-        if ($actionClass !== null) {
-            /** @var \Enlivenapp\FlightShield\Authentication\Authenticators\Session $authenticator */
-            $authenticator = $this->app->auth()->setAuthenticator('session')->getAuthenticator();
-            $authenticator->startAction($actionClass, $user);
-        } else {
-            // Log them in
+        // Start the register action only when configured and applicable
+        // to the user (conditional actions may not apply). Otherwise,
+        // log the user straight in.
+        /** @var \Enlivenapp\FlightShield\Authentication\Authenticators\Session $authenticator */
+        $authenticator = $this->app->auth()->setAuthenticator('session')->getAuthenticator();
+        if (! $authenticator->startUpAction('register', $user)) {
             $this->app->auth()->login($user);
         }
 

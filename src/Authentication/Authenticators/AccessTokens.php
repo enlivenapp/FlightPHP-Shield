@@ -181,6 +181,11 @@ class AccessTokens implements AuthenticatorInterface
             return;
         }
 
+        // Only record the active date for activated, non-banned users.
+        if ($this->user->isBanned() || ! $this->user->isActivated()) {
+            return;
+        }
+
         $this->user->last_active = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
         $this->user->save();
     }

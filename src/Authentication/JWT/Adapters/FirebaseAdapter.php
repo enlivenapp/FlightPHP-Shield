@@ -16,7 +16,10 @@ use stdClass;
 
 /**
  * Firebase JWT adapter.
- * Requires firebase/php-jwt ^6.0 (suggested dependency).
+ * Requires firebase/php-jwt ^7.0 (suggested dependency).
+ *
+ * Generator decode signature for php-jwt v7 removed the $headers
+ * parameter, so a single keyset resolves to a single Key.
  */
 class FirebaseAdapter implements JWSAdapterInterface
 {
