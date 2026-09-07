@@ -113,8 +113,15 @@ class Email2FA implements ActionInterface
             return $app->view()->fetch('2fa_verify', ['error' => 'Invalid 2FA code.']);
         }
 
-        $redirect = $app->get('enlivenapp.flight-shield')['redirects']['after_login'] ?? '/';
-        $app->redirect($redirect);
+        $config = $app->get('enlivenapp.flight-shield') ?? [];
+        $redirect = $config['redirects']['after_login'] ?? '/';
+        $user = $app->auth()->user();
+
+        if (($config['redirects']['after_login_admin'] ?? null) !== null && $user !== null && $user->can('admin.access')) {
+            $app->redirect($config['redirects']['after_login_admin']);
+        } else {
+            $app->redirect($redirect);
+        }
         return '';
     }
 

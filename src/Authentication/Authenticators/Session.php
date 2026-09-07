@@ -184,9 +184,12 @@ class Session implements AuthenticatorInterface
 
         // Remove remember-me token
         $cookieName = $this->config['session']['remember_cookie_name'] ?? 'remember';
-        if (isset($_COOKIE[$cookieName]) && $this->user) {
+        if (isset($_COOKIE[$cookieName])) {
             $rememberRepo = $this->getRememberModel();
-            $rememberRepo->deleteByUser($this->user->id);
+            $token = $rememberRepo->findBySelector(explode(':', $_COOKIE[$cookieName])[0]);
+            if ($token !== null) {
+                $rememberRepo->deleteByUser($token->user_id);
+            }
             $this->clearCookie($cookieName);
         }
 
@@ -446,7 +449,7 @@ class Session implements AuthenticatorInterface
         }
 
         if (! hash_equals($token->hashed_validator, hash('sha256', $validator))) {
-            // Possible token theft — purge all tokens for this user
+            // Possible token theft - purge all tokens for this user
             $rememberRepo->deleteByUser($token->user_id);
             $this->clearCookie($cookieName);
             return;
@@ -591,7 +594,7 @@ class Session implements AuthenticatorInterface
         try {
             $manager->setPdo($this->app->db());
         } catch (\Throwable) {
-            // Storage unavailable — consumers that need persistence will
+            // Storage unavailable - consumers that need persistence will
             // get a clear error from start().
         }
 
