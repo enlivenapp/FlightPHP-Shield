@@ -16,7 +16,7 @@ namespace Enlivenapp\FlightShield\Support;
  * and emailing codes.
  *
  * The keyword set mirrors CodeIgniter's default robot list
- * (original PRs by michalsn — @see https://github.com/codeigniter4/shield/pull/1294
+ * (original PRs by michalsn - @see https://github.com/codeigniter4/shield/pull/1294
  * and https://github.com/codeigniter4/shield/pull/1295).
  */
 class RobotDetector

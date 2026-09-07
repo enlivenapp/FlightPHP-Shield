@@ -18,7 +18,7 @@ use Enlivenapp\FlightShield\Models\PermissionUser;
  * Authorization trait for the User entity.
  *
  * Groups and permissions are loaded directly from the database via AR.
- * $this inside this trait IS the User AR entity — $this->id is the user's ID.
+ * $this inside this trait IS the User AR entity; $this->id is the user's ID.
  */
 trait Authorizable
 {
@@ -245,15 +245,15 @@ trait Authorizable
     /**
      * Check if user has permission.
      *
-     * 1. Check direct user denies — if denied, return false immediately
-     * 2. Check direct user grants — if granted, return true
-     * 3. Check group permissions — if matched, return true
+     * 1. Check direct user denies. If denied, return false immediately
+     * 2. Check direct user grants. If granted, return true
+     * 3. Check group permissions. If matched, return true
      * 4. Return false
      *
      * Matching uses the hierarchical wildcard semantics of
      * PermissionMatcher: "users.*" grants "users.create" and every
      * descendant, but never "users" itself. A standalone "*" grant no
-     * longer matches everything — superadmins bypass via group
+     * longer matches everything. Superadmins bypass via group
      * membership instead.
      */
     public function can(string $permission): bool

@@ -15,7 +15,7 @@ use Enlivenapp\FlightShield\Models\AuthPermission;
 use Enlivenapp\FlightShield\Models\PermissionUser;
 
 /**
- * Utility class for working with permissions — backed by the auth_permissions table.
+ * Utility class for working with permissions - backed by the auth_permissions table.
  */
 class Permissions
 {
@@ -79,7 +79,7 @@ class Permissions
     /**
      * Save (create or update) a permission.
      *
-     * All editable columns are pushed through dirty() explicitly — writes
+     * All editable columns are pushed through dirty() explicitly - writes
      * to the model's declared typed properties bypass ActiveRecord's dirty
      * tracker, and loose property/data comparison misses value flips like
      * description -> ''.

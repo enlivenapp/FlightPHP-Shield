@@ -14,7 +14,7 @@ use Enlivenapp\FlightShield\Exceptions\RuntimeException;
 use Enlivenapp\FlightShield\Exceptions\SecurityException;
 
 /**
- * HMAC Encrypter — encrypts/decrypts HMAC secret keys for storage.
+ * HMAC Encrypter - encrypts/decrypts HMAC secret keys for storage.
  *
  * Uses OpenSSL directly instead of CI4's Encryption service.
  * Keys are stored in the format: $b6$<keyId>$<base64(iv + tag + encrypted)>

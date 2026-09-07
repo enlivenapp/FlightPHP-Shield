@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Spy subclass — defines halt() as a real method so it can be inspected
+ * Spy subclass - defines halt() as a real method so it can be inspected
  * without actually sending output or exiting.
  */
 class SpyEngine extends Engine

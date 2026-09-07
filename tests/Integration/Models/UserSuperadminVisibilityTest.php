@@ -41,7 +41,7 @@ class UserSuperadminVisibilityTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // findAllPaginated — superadmin exclusion
+    // findAllPaginated - superadmin exclusion
     // -----------------------------------------------------------------
 
     #[Test]
@@ -143,7 +143,7 @@ class UserSuperadminVisibilityTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // countAll — superadmin exclusion
+    // countAll - superadmin exclusion
     // -----------------------------------------------------------------
 
     #[Test]
@@ -185,7 +185,7 @@ class UserSuperadminVisibilityTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // findById — superadmin guard
+    // findById - superadmin guard
     // -----------------------------------------------------------------
 
     #[Test]

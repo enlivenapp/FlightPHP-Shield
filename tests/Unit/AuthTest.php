@@ -121,7 +121,7 @@ class AuthTest extends TestCase
         $auth->setAuthenticator('tokens');
         $this->assertInstanceOf(AccessTokens::class, $auth->getAuthenticator());
 
-        // Now reset to null — should resolve to the default (session)
+        // Now reset to null - should resolve to the default (session)
         $auth->setAuthenticator(null);
 
         $this->assertInstanceOf(Session::class, $auth->getAuthenticator());

@@ -21,7 +21,7 @@ use PHPUnit\Framework\TestCase;
  * Regression coverage for the "remember me" sliding refresh: restoring a
  * remembered user consumes the presented token and issues a fresh one, so
  * the old cookie cannot be replayed. (Set-Cookie emission itself is not
- * asserted — headers_list() is empty under CLI SAPI — the cookie value is
+ * asserted - headers_list() is empty under CLI SAPI - the cookie value is
  * derived from the rotated database token instead.)
  */
 #[CoversClass(Session::class)]

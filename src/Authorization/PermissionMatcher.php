@@ -15,7 +15,7 @@ namespace Enlivenapp\FlightShield\Authorization;
  * Flight Shield authorization internals.
  *
  * Ported from CodeIgniter Shield's PermissionMatcher
- * (original PR by memleakd — @see https://github.com/codeigniter4/shield/pull/1327).
+ * (original PR by memleakd - @see https://github.com/codeigniter4/shield/pull/1327).
  *
  * Supported wildcards:
  *   - trailing wildcard matches the named node and all of its descendants

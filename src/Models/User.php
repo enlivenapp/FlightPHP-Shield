@@ -50,7 +50,7 @@ class User extends \flight\ActiveRecord
      * Find a user by ID.
      *
      * When $includeSuperadmins is false and the target user is in the
-     * superadmin group, returns null — as if the user doesn't exist.
+     * superadmin group, returns null - as if the user doesn't exist.
      */
     public function findById(int|string $id, bool $includeSuperadmins = true): ?self
     {
@@ -144,7 +144,7 @@ class User extends \flight\ActiveRecord
             return (int) $result->cnt;
         }
 
-        // Post-fetch filter — count all then subtract superadmins
+        // Post-fetch filter - count all then subtract superadmins
         $all = (new self($this->getDatabaseConnection()))
             ->isNull('deleted_at')
             ->findAll();

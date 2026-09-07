@@ -19,7 +19,7 @@ class ShieldHmacCommand extends AbstractBaseCommand
 {
     public function __construct(array $config)
     {
-        parent::__construct('shield:hmac', 'HMAC API Authentication — Key & Token Management', $config);
+        parent::__construct('shield:hmac', 'HMAC API Authentication - Key & Token Management', $config);
 
         $this
             ->argument('[action]', 'Action: init, listkeys, addkey, removekey, encrypt, decrypt, reencrypt, invalidateAll')

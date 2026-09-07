@@ -28,7 +28,7 @@ class PermissionMatcherTest extends TestCase
         yield 'exact' => ['users.edit', ['users.edit'], true];
         yield 'exact among many grants' => ['users.edit', ['roles.delete', 'users.edit'], true];
 
-        // Trailing wildcard — descendants only
+        // Trailing wildcard - descendants only
         yield 'trailing wildcard descendant' => ['users.create', ['users.*'], true];
         yield 'trailing wildcard deeper descendant' => ['users.create.team', ['users.*'], true];
         yield 'trailing wildcard does not match parent node' => ['users', ['users.*'], false];
@@ -36,7 +36,7 @@ class PermissionMatcherTest extends TestCase
         yield 'trailing wildcard nested prefix' => ['a.b.c', ['a.b.*'], true];
         yield 'trailing wildcard nested prefix parent' => ['a.b', ['a.b.*'], false];
 
-        // Middle wildcards — exactly one segment
+        // Middle wildcards - exactly one segment
         yield 'middle wildcard single segment' => ['admin.access.post', ['admin.*.post'], true];
         yield 'middle wildcard one-too-few segments' => ['admin.post', ['admin.*.post'], false];
         yield 'middle wildcard mismatch' => ['admin.access.edit', ['admin.*.post'], false];

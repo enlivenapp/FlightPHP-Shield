@@ -15,7 +15,7 @@ use Enlivenapp\FlightShield\Models\AuthGroupPermission;
 use Enlivenapp\FlightShield\Models\GroupUser;
 
 /**
- * Utility class for working with groups — backed by the auth_groups table.
+ * Utility class for working with groups - backed by the auth_groups table.
  */
 class Groups
 {
@@ -79,7 +79,7 @@ class Groups
     /**
      * Save (create or update) a group.
      *
-     * All editable columns are pushed through dirty() explicitly — writes
+     * All editable columns are pushed through dirty() explicitly - writes
      * to the model's declared typed properties bypass ActiveRecord's dirty
      * tracker, and loose property/data comparison misses value flips like
      * description -> ''.
@@ -247,7 +247,7 @@ class Groups
             $this->removePermission($groupAlias, $remove);
         }
 
-        // Add mappings that don't exist yet — skip unknown permissions
+        // Add mappings that don't exist yet - skip unknown permissions
         $permissionsUtil = new Permissions($this->pdo);
         foreach (array_diff($target, $current) as $add) {
             if ($permissionsUtil->info($add) === null) {

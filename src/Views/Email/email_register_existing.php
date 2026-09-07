@@ -26,7 +26,7 @@
                         <td style="padding: 30px;">
                             <h2 style="margin: 0 0 10px; color: #1a1a2e; font-size: 18px;">Registration Attempt</h2>
                             <p style="color: #555; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">Someone attempted to register an account using your email address. Since you already have an account, no new account was created.</p>
-                            <p style="color: #555; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">If this was you, you can sign in using your existing credentials. If you did not attempt this, no action is required — your account is safe.</p>
+                            <p style="color: #555; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">If this was you, you can sign in using your existing credentials. If you did not attempt this, no action is required and your account is safe.</p>
                         </td>
                     </tr>
                     <tr>

@@ -60,7 +60,7 @@ class JWTManagerTest extends TestCase
     public function generateTokenThrowsRuntimeExceptionWhenFirebaseNotAvailable(): void
     {
         if (class_exists(\Firebase\JWT\JWT::class)) {
-            $this->markTestSkipped('firebase/php-jwt is installed — skipping unavailability test');
+            $this->markTestSkipped('firebase/php-jwt is installed - skipping unavailability test');
         }
 
         $manager = new JWTManager($this->config);

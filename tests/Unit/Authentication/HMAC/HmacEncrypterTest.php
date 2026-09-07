@@ -234,7 +234,7 @@ class HmacEncrypterTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Multiple keys — decrypt old key with new current
+    // Multiple keys - decrypt old key with new current
     // -----------------------------------------------------------------
 
     #[Test]
@@ -302,7 +302,7 @@ class HmacEncrypterTest extends TestCase
     public function keyDerivationUsesHkdfWithExpectedContext(): void
     {
         // Two encrypters with the SAME raw key must produce the SAME derived key
-        // (and therefore identical decryption results) — verifying HKDF is deterministic.
+        // (and therefore identical decryption results) - verifying HKDF is deterministic.
         $config = $this->makeConfig();
 
         $enc1 = new HmacEncrypter($config);

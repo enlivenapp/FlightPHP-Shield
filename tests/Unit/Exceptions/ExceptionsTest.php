@@ -99,7 +99,7 @@ class ExceptionsTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // AuthenticationException — inheritance
+    // AuthenticationException - inheritance
     // -----------------------------------------------------------------
 
     #[Test]
@@ -117,7 +117,7 @@ class ExceptionsTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // AuthenticationException — static factories
+    // AuthenticationException - static factories
     // -----------------------------------------------------------------
 
     #[Test]

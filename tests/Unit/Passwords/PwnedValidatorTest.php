@@ -79,7 +79,7 @@ class PwnedValidatorTest extends TestCase
         }
 
         $validator = $this->makeValidator();
-        // Cryptographically random — essentially impossible to appear in breach data
+        // Cryptographically random - essentially impossible to appear in breach data
         $uniquePassword = 'FlightShield-' . bin2hex(random_bytes(24));
         $result = $validator->check($uniquePassword);
 

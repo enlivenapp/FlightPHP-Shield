@@ -182,6 +182,6 @@ class UserAggregatesTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // countNewByMonth — skipped (DATE_FORMAT is MySQL-only, tests use SQLite)
+    // countNewByMonth - skipped (DATE_FORMAT is MySQL-only, tests use SQLite)
     // -----------------------------------------------------------------
 }

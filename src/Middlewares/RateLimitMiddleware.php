@@ -22,10 +22,10 @@ use flight\Engine;
  * falls within the lockout window, the request is halted with a 429.
  *
  * Configuration (merged from 'enlivenapp.flight-shield'):
- *   rate_limiting.enabled         — bool, default true
- *   rate_limiting.max_attempts    — int,  default 10
- *   rate_limiting.decay_minutes   — int,  default 30
- *   rate_limiting.lockout_minutes — int,  default 30
+ *   rate_limiting.enabled         - bool, default true
+ *   rate_limiting.max_attempts    - int,  default 10
+ *   rate_limiting.decay_minutes   - int,  default 30
+ *   rate_limiting.lockout_minutes - int,  default 30
  */
 class RateLimitMiddleware
 {
@@ -64,7 +64,7 @@ class RateLimitMiddleware
             return;
         }
 
-        // Threshold reached — check if the most recent failure is still within the lockout window
+        // Threshold reached - check if the most recent failure is still within the lockout window
         $loginLatest = $loginModel->latestFailureDateByIp($ip);
         $tokenLatest = $tokenModel->latestFailureDateByIp($ip);
 

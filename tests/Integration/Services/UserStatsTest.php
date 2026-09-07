@@ -109,7 +109,7 @@ class UserStatsTest extends TestCase
     #[Test]
     public function newUsersThisMonthCountsUsersCreatedThisMonth(): void
     {
-        // Created "now" by TestHelper — should be in this month
+        // Created "now" by TestHelper - should be in this month
         TestHelper::createUser($this->pdo, 'a@test.com', 'pass1234', 'new1', true);
 
         // Old user
@@ -204,6 +204,6 @@ class UserStatsTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // countNewByMonth — skipped (DATE_FORMAT is MySQL-only, tests use SQLite)
+    // countNewByMonth - skipped (DATE_FORMAT is MySQL-only, tests use SQLite)
     // -----------------------------------------------------------------
 }

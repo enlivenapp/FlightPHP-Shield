@@ -37,7 +37,7 @@ class DictionaryValidatorTest extends TestCase
     public function commonPasswordFailsWhenDictionaryExists(): void
     {
         if (! $this->dictionaryExists) {
-            $this->markTestSkipped('Dictionary file not present — validator always passes.');
+            $this->markTestSkipped('Dictionary file not present - validator always passes.');
         }
 
         $validator = $this->makeValidator();
@@ -51,7 +51,7 @@ class DictionaryValidatorTest extends TestCase
     public function uncommonPasswordAlwaysPasses(): void
     {
         $validator = $this->makeValidator();
-        // Randomly generated — extremely unlikely to be in any dictionary
+        // Randomly generated - extremely unlikely to be in any dictionary
         $result = $validator->check('Xk7!mQ2vP9nR4wLs-unique-2026');
 
         $this->assertTrue($result->isOK());
@@ -61,7 +61,7 @@ class DictionaryValidatorTest extends TestCase
     public function checkIsCaseInsensitiveWhenDictionaryExists(): void
     {
         if (! $this->dictionaryExists) {
-            $this->markTestSkipped('Dictionary file not present — validator always passes.');
+            $this->markTestSkipped('Dictionary file not present - validator always passes.');
         }
 
         $validator = $this->makeValidator();
@@ -75,7 +75,7 @@ class DictionaryValidatorTest extends TestCase
     public function checkIsCaseInsensitiveMixedCase(): void
     {
         if (! $this->dictionaryExists) {
-            $this->markTestSkipped('Dictionary file not present — validator always passes.');
+            $this->markTestSkipped('Dictionary file not present - validator always passes.');
         }
 
         $validator = $this->makeValidator();
@@ -88,7 +88,7 @@ class DictionaryValidatorTest extends TestCase
     public function failureResultHasExtraInfo(): void
     {
         if (! $this->dictionaryExists) {
-            $this->markTestSkipped('Dictionary file not present — validator always passes.');
+            $this->markTestSkipped('Dictionary file not present - validator always passes.');
         }
 
         $validator = $this->makeValidator();
@@ -111,7 +111,7 @@ class DictionaryValidatorTest extends TestCase
     public function anotherCommonPasswordFails(): void
     {
         if (! $this->dictionaryExists) {
-            $this->markTestSkipped('Dictionary file not present — validator always passes.');
+            $this->markTestSkipped('Dictionary file not present - validator always passes.');
         }
 
         $validator = $this->makeValidator();

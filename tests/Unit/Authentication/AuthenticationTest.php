@@ -121,7 +121,7 @@ class AuthenticationTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Caching — same alias returns same instance
+    // Caching - same alias returns same instance
     // -----------------------------------------------------------------
 
     #[Test]

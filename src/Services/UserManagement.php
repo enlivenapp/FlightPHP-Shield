@@ -24,7 +24,7 @@ use Enlivenapp\FlightShield\Result;
  * All password hashing/validation and identity handling use the
  * configured Shield settings.
  *
- * Models are an implementation detail here — calling code should never
+ * Models are an implementation detail here - calling code should never
  * need to instantiate Shield models directly.
  */
 class UserManagement
@@ -73,7 +73,7 @@ class UserManagement
      * Find a single non-deleted user by ID.
      *
      * When $includeSuperadmins is false and the target is a superadmin,
-     * returns null — as if the user doesn't exist.
+     * returns null - as if the user doesn't exist.
      */
     public function find(int|string $id, bool $includeSuperadmins = true): ?User
     {
@@ -252,7 +252,7 @@ class UserManagement
      *
      * Inactive users cannot log in.
      *
-     * Note: 'active' is pushed through dirty() explicitly — boolean flips
+     * Note: 'active' is pushed through dirty() explicitly - boolean flips
      * (true -> false) on entities created via insert() are otherwise
      * invisible to ActiveRecord's loose property/data comparison.
      */

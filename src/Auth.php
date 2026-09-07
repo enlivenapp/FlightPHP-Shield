@@ -20,7 +20,7 @@ use Enlivenapp\FlightShield\Services\UserStats;
 use flight\Engine;
 
 /**
- * Auth facade — provides a convenient interface to the authentication system.
+ * Auth facade - provides a convenient interface to the authentication system.
  *
  * Delegates to the active authenticator for: attempt, check, login, loginById,
  * logout, loggedIn, getUser, recordActiveDate.

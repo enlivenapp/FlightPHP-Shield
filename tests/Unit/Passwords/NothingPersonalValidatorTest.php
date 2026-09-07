@@ -138,7 +138,7 @@ class NothingPersonalValidatorTest extends TestCase
         $validator = $this->makeValidator(['max_similarity' => 0]);
         $user = $this->makeUser('ab');
 
-        // 'ab' is only 2 chars — strips/explode skips needles < 3; no substring match
+        // 'ab' is only 2 chars - strips/explode skips needles < 3; no substring match
         $result = $validator->check('abcdef12', $user);
 
         $this->assertTrue($result->isOK());
@@ -155,7 +155,7 @@ class NothingPersonalValidatorTest extends TestCase
         if (! $result->isOK() && $result->reason() === 'Password is too similar to your username.') {
             $this->assertNotNull($result->extraInfo());
         } else {
-            // Failed on personal info check — that's also acceptable
+            // Failed on personal info check - that's also acceptable
             $this->assertFalse($result->isOK());
         }
     }

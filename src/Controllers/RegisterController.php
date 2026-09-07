@@ -85,7 +85,7 @@ class RegisterController
             return;
         }
 
-        // Check if email already exists — show same success page either way
+        // Check if email already exists - show same success page either way
         /** @var UserIdentityRepository $identityRepo */
         $identityModel = new UserIdentity(\Flight::db());
         $existing = $identityModel->getIdentityBySecret(UserIdentity::TYPE_EMAIL_PASSWORD, $email);
@@ -105,7 +105,7 @@ class RegisterController
             return;
         }
 
-        // Create user — inactive when email activation is required. An
+        // Create user - inactive when email activation is required. An
         // empty action class disables the action entirely (user logs in).
         $actionClass = $this->config['actions']['register'] ?? null;
         if ($actionClass === '') {

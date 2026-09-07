@@ -43,7 +43,7 @@ class EmailActivator implements ActionInterface
 
     public function handle(Engine $app): string
     {
-        // Not used for email activation — the user clicks a link in the email
+        // Not used for email activation - the user clicks a link in the email
         throw new \RuntimeException('Not supported for email activation.');
     }
 

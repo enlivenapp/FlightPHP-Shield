@@ -321,11 +321,11 @@ class ValidationRulesTest extends TestCase
             ],
         ];
 
-        // Field absent — no error expected because it's not required
+        // Field absent - no error expected because it's not required
         $errors = $this->rules->validate([], $rules);
         $this->assertArrayNotHasKey('nickname', $errors);
 
-        // Field empty string — same behaviour
+        // Field empty string - same behaviour
         $errors = $this->rules->validate(['nickname' => ''], $rules);
         $this->assertArrayNotHasKey('nickname', $errors);
     }

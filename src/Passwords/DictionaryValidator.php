@@ -23,7 +23,7 @@ class DictionaryValidator extends BaseValidator implements ValidatorInterface
         $dictionaryFile = __DIR__ . '/_dictionary.txt';
 
         if (! file_exists($dictionaryFile)) {
-            // No dictionary file — pass
+            // No dictionary file - pass
             return (new Result())->setSuccess(true);
         }
 

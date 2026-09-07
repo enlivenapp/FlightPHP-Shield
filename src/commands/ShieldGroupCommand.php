@@ -278,7 +278,7 @@ class ShieldGroupCommand extends AbstractBaseCommand
             }
         }
 
-        // Refuse to sync when nothing in the list exists — otherwise this
+        // Refuse to sync when nothing in the list exists - otherwise this
         // would silently strip every permission from the group.
         if ($known === []) {
             $io->error('No known permissions in the list; group left unchanged.', true);

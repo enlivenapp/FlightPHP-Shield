@@ -18,7 +18,7 @@ use Enlivenapp\FlightShield\Models\User;
  * every user.
  *
  * Ported from CodeIgniter Shield's ConditionalActionInterface
- * (original PR by memleakd — @see https://github.com/codeigniter4/shield/pull/1328).
+ * (original PR by memleakd - @see https://github.com/codeigniter4/shield/pull/1328).
  */
 interface ConditionalActionInterface
 {
