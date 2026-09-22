@@ -15,7 +15,7 @@
         "ext-openssl": "*",
         "flightphp/core": "^3.0",
         "flightphp/active-record": ">=0.7",
-        "enlivenapp/flight-csrf": "^0.2",
+        "enlivenapp/flight-csrf": "^1.0",
         "enlivenapp/flight-sessions": "^0.1"
     },
     "suggest": {
