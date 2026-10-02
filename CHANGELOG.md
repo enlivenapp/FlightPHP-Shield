@@ -1,5 +1,34 @@
 # Changelog
 
+This changelog follows [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Entries use the `type(scope): description` form.
+
+---
+
+## 0.5.0 - 2026-10-02
+
+- feat(register): create the account and send the activation email from one call, with no session
+- fix(activate): read the account from the emailed token, so the link works in any browser or device
+- refactor(activate)!: take `EmailActivator` out of the action list and remove `GET /auth/activate`
+
+  BREAKING CHANGE: `GET /auth/activate` removed. Registration sends the activation link.
+
+- fix(magic-link): activate an inactive account when the link is clicked, then sign the user in
+- refactor(middleware): log inactive users out instead of sending them to an activation action
+- test: add `EmailActivatorTest` and `AuthRegistrationTest`
+- docs: describe the session-free registration and activation flow
+
+---
+
+## 0.4.3 - 2026-09-21
+
+- build(deps): require `enlivenapp/flight-csrf` `^1.0`
+
+---
+
+## 0.4.2 - 2026-09-18
+
+- feat(db): add `updated_at` to `auth_group_permissions`
+
 ---
 
 ## 0.4.1 - 2026-09-07

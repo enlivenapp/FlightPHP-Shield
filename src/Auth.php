@@ -10,13 +10,16 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield;
 
+use Enlivenapp\FlightShield\Authentication\Actions\EmailActivator;
 use Enlivenapp\FlightShield\Authentication\Authentication;
 use Enlivenapp\FlightShield\Authentication\AuthenticatorInterface;
 use Enlivenapp\FlightShield\Authorization\Groups;
 use Enlivenapp\FlightShield\Authorization\Permissions;
 use Enlivenapp\FlightShield\Models\User;
+use Enlivenapp\FlightShield\Models\UserIdentity;
 use Enlivenapp\FlightShield\Services\UserManagement;
 use Enlivenapp\FlightShield\Services\UserStats;
+use Enlivenapp\FlightShield\Validation\ValidationRules;
 use flight\Engine;
 
 /**
@@ -112,6 +115,100 @@ class Auth
     public function recordActiveDate(): void
     {
         $this->getAuthenticator()->recordActiveDate();
+    }
+
+    // -----------------------------------------------------------------
+    // Registration
+    // -----------------------------------------------------------------
+
+    /**
+     * Create an account from registration fields.
+     *
+     * This is the one entry point for registration, for the built-in form and
+     * for any other caller. No session is read or written. When the config
+     * requires email activation, the account is created inactive and the
+     * activation email is sent here.
+     *
+     * On failure the field errors are returned as an array via extraInfo(),
+     * with the first error also set as the reason. A duplicate email address
+     * reports success without revealing whether the account exists.
+     */
+    public function register(array $fields): Result
+    {
+        $errors = (new ValidationRules($this->config['passwords'] ?? []))
+            ->validate($fields, (new ValidationRules($this->config['passwords'] ?? []))->getRegistrationRules());
+
+        if ($errors !== []) {
+            return (new Result())
+                ->setSuccess(false)
+                ->setReason((string) reset($errors))
+                ->setExtraInfo(array_values($errors));
+        }
+
+        $email = trim((string) ($fields['email'] ?? ''));
+
+        // Silent success for an address that already has an account, so the
+        // form cannot be used to probe for registered emails.
+        $existing = (new UserIdentity($this->app->db()))
+            ->getIdentityBySecret(UserIdentity::TYPE_EMAIL_PASSWORD, $email);
+
+        if ($existing !== null) {
+            $this->sendRegistrationAttemptNotice($email);
+            return (new Result())->setSuccess(true);
+        }
+
+        $requiresActivation = $this->requiresEmailActivation();
+
+        $result = $this->users()->create(
+            (string) ($fields['username'] ?? ''),
+            $email,
+            (string) ($fields['password'] ?? ''),
+            $fields['group'] ?? null,
+            $requiresActivation
+        );
+
+        if (! $result->isOK()) {
+            return $result->setExtraInfo([$result->reason() ?? 'Registration failed.']);
+        }
+
+        if ($requiresActivation) {
+            /** @var User $user */
+            $user = $result->extraInfo();
+            (new EmailActivator())->begin($user, $this->app);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Whether new accounts have to confirm their email before logging in.
+     */
+    protected function requiresEmailActivation(): bool
+    {
+        $actionClass = $this->config['actions']['register'] ?? null;
+
+        return is_string($actionClass)
+            && $actionClass !== ''
+            && is_a($actionClass, EmailActivator::class, true);
+    }
+
+    /**
+     * Tell an existing address that someone tried to register with it.
+     */
+    protected function sendRegistrationAttemptNotice(string $email): void
+    {
+        $sender = $this->config['email_sender'] ?? null;
+
+        if ($sender === null || ! is_callable($sender)) {
+            return;
+        }
+
+        $body = $this->app->view()->fetch('Email/email_register_existing', [
+            'ipAddress' => $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
+            'date'      => date('Y-m-d H:i:s'),
+        ]);
+
+        $sender($email, 'Registration Attempt', $body);
     }
 
     // -----------------------------------------------------------------

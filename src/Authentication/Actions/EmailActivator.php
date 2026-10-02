@@ -13,40 +13,82 @@ namespace Enlivenapp\FlightShield\Authentication\Actions;
 use Enlivenapp\FlightShield\Authentication\Authenticators\Session;
 use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Models\UserIdentity;
+use Enlivenapp\FlightShield\Result;
 use Enlivenapp\FlightShield\Support\RobotDetector;
 use flight\Engine;
 
-class EmailActivator implements ActionInterface
+/**
+ * Email activation.
+ *
+ * Session-free on both ends. Registration calls begin() with the new User to
+ * mint the token and send the mail; verify() resolves the account from the
+ * token alone, activates it, and only then starts a session for the login
+ * hand-off.
+ */
+class EmailActivator
 {
     private string $type = Session::ID_TYPE_EMAIL_ACTIVATE;
 
-    public function show(Engine $app): string
+    /**
+     * Mint an activation token for a freshly created user and email it.
+     *
+     * Called by registration, which already holds the new User. No session
+     * is read or written here.
+     */
+    public function begin(User $user, Engine $app): void
     {
-        if (RobotDetector::isBot($_SERVER['HTTP_USER_AGENT'] ?? '', $this->getBotDetectionConfig($app))) {
-            $app->halt(404);
-            return '';
+        $code = $this->createIdentity($user);
+        $this->sendActivationEmail($user, $code, $app);
+    }
+
+    /**
+     * Resolve an activation token to a User and burn it.
+     *
+     * Token-only: no session is involved. Returns a failed Result with a
+     * user-facing reason when the token is unknown, expired, or the account
+     * is gone; on success the User is in extraInfo().
+     */
+    public function consume(string $token): Result
+    {
+        $identityModel = new UserIdentity(\Flight::db());
+        $identity = $identityModel->getIdentityBySecret($this->type, hash('sha256', $token));
+
+        if ($identity === null) {
+            return (new Result())
+                ->setSuccess(false)
+                ->setReason('Invalid or already used activation token.');
         }
 
-        /** @var Session $authenticator */
-        $authenticator = $app->auth()->getAuthenticator();
-        $user = $authenticator->getPendingUser();
+        if ($identity->isExpired()) {
+            $identity->delete();
+            return (new Result())
+                ->setSuccess(false)
+                ->setReason('The activation token has expired. Please register again.');
+        }
+
+        $user = (new User(\Flight::db()))->findById($identity->user_id);
+
+        // Single use: burn the token whichever way this goes.
+        $identity->delete();
 
         if ($user === null) {
-            throw new \RuntimeException('Cannot get the pending login user.');
+            return (new Result())
+                ->setSuccess(false)
+                ->setReason('Invalid activation token.');
         }
 
-        $code = $this->createIdentity($user, $app);
-        $this->sendActivationEmail($user, $code, $app);
-
-        return $app->view()->fetch('activate', ['user' => $user]);
+        return (new Result())
+            ->setSuccess(true)
+            ->setExtraInfo($user);
     }
 
-    public function handle(Engine $app): string
-    {
-        // Not used for email activation - the user clicks a link in the email
-        throw new \RuntimeException('Not supported for email activation.');
-    }
-
+    /**
+     * Verify an activation token from an email link.
+     *
+     * The token alone identifies the account, so the link works from any
+     * browser or device. Once the account is activated the token is spent,
+     * and a session takes over for the login hand-off.
+     */
     public function verify(Engine $app): string
     {
         if (RobotDetector::isBot($_SERVER['HTTP_USER_AGENT'] ?? '', $this->getBotDetectionConfig($app))) {
@@ -54,40 +96,42 @@ class EmailActivator implements ActionInterface
             return '';
         }
 
+        $config = $app->get('enlivenapp.flight-shield') ?? [];
+        $token  = (string) ($app->request()->query->token ?? $app->request()->data->token ?? '');
+
+        $result = $this->consume($token);
+
+        if (! $result->isOK()) {
+            return $app->view()->fetch('activate', ['error' => $result->reason()]);
+        }
+
+        /** @var User $user */
+        $user = $result->extraInfo();
+
+        if ($user->isBanned()) {
+            $app->redirect($config['redirects']['login'] ?? '/auth/login');
+            return '';
+        }
+
+        if ($user->isNotActivated()) {
+            $user->activate();
+            $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            // Explicit dirty(): typed property assignment bypasses __set().
+            $user->dirty(['active' => true, 'updated_at' => $user->updated_at]);
+            $user->save();
+        }
+
+        // The token is spent. Sessions take over from here for the login step.
         /** @var Session $authenticator */
-        $authenticator = $app->auth()->getAuthenticator();
-        $postedToken = $app->request()->query->token ?? $app->request()->data->token ?? '';
+        $authenticator = $app->auth()->setAuthenticator('session')->getAuthenticator();
 
-        $user = $authenticator->getPendingUser();
-        if ($user === null) {
-            throw new \RuntimeException('Cannot get the pending login user.');
+        if ($authenticator->startUpAction('login', $user)) {
+            $app->redirect('/auth/2fa');
+            return '';
         }
 
-        /** @var UserIdentityRepository $identityRepo */
-        $identityModel = new UserIdentity(\Flight::db());
-        $identity = $identityModel->getIdentityByType($user, $this->type);
-
-        if ($identity === null) {
-            return $app->view()->fetch('activate', ['error' => 'No activation token found. Please register again.']);
-        }
-
-        if ($identity->isExpired()) {
-            return $app->view()->fetch('activate', ['error' => 'The activation token has expired. Please register again.']);
-        }
-
-        if (! $authenticator->checkAction($identity, $postedToken)) {
-            return $app->view()->fetch('activate', ['error' => 'Invalid activation token.']);
-        }
-
-        // Activate the user
-        $user->activate();
-        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        // Explicit dirty(): typed property assignment bypasses __set().
-        $user->dirty(['active' => true, 'updated_at' => $user->updated_at]);
-        $user->save();
-
-        $redirect = $app->get('enlivenapp.flight-shield')['redirects']['after_register'] ?? '/';
-        $app->redirect($redirect);
+        $authenticator->loginById($user->id);
+        $app->redirect($config['redirects']['after_register'] ?? '/');
         return '';
     }
 
@@ -128,9 +172,8 @@ class EmailActivator implements ActionInterface
         $sender($to, 'Activate Your Account', $body);
     }
 
-    public function createIdentity(User $user, Engine $app): string
+    protected function createIdentity(User $user): string
     {
-        /** @var UserIdentityRepository $identityRepo */
         $identityModel = new UserIdentity(\Flight::db());
 
         $identityModel->deleteIdentitiesByType($user, $this->type);

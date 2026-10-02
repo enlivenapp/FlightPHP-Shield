@@ -100,13 +100,18 @@ class UserManagement
      * Validates password strength against the configured validators and
      * rejects duplicate email addresses.
      *
+     * When $requiresActivation is true the user is created inactive; the
+     * caller is responsible for sending an activation link and activating
+     * the account later.
+     *
      * On success the created User is returned via extraInfo().
      */
     public function create(
         string $username,
         string $email,
         string $password,
-        ?string $group = null
+        ?string $group = null,
+        bool $requiresActivation = false
     ): Result {
         $username = trim($username);
         $email = trim($email);
@@ -148,7 +153,7 @@ class UserManagement
 
         $user = new User($this->pdo);
         $user->username   = $username;
-        $user->active     = true;
+        $user->active     = ! $requiresActivation;
         $user->created_at = $now;
         $user->updated_at = $now;
         $user->insert();

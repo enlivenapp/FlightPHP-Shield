@@ -111,12 +111,14 @@ return [
     'email_sender' => null,
 
     // Authentication actions (post-login / post-register)
-    // Set to a class implementing ActionInterface, or null/'' to disable.
-    // Actions implementing ConditionalActionInterface are only started
-    // when appliesTo() is true for the user.
+    // 'login'    : class implementing ActionInterface, or null/'' to disable.
+    //              Actions implementing ConditionalActionInterface only start
+    //              when appliesTo() is true for the user.
+    // 'register' : set to EmailActivator::class to require email activation at
+    //              registration. null/'' creates accounts active with no email.
     'actions' => [
         'login'    => null, // e.g. \Enlivenapp\FlightShield\Authentication\Actions\Email2FA::class
-        'register' => null, // e.g. \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator::class
+        'register' => null, // \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator::class
     ],
 
     // Bot detection: magic-link tokens, 2FA codes, and activation tokens

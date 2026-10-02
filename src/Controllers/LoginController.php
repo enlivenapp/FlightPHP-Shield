@@ -70,14 +70,12 @@ class LoginController
             return;
         }
 
-        // Check if we're in a pending state (2FA, activation)
+        // Check if we're in a pending state (2FA)
         $authenticator = $auth->getAuthenticator();
         if (method_exists($authenticator, 'isPending') && $authenticator->isPending()) {
             $action = $authenticator->getAction();
             if ($action instanceof \Enlivenapp\FlightShield\Authentication\Actions\Email2FA) {
                 $this->app->redirect('/auth/2fa');
-            } elseif ($action instanceof \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator) {
-                $this->app->redirect('/auth/activate');
             } else {
                 $this->app->redirect('/');
             }

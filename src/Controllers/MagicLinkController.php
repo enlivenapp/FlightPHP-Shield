@@ -155,23 +155,27 @@ class MagicLinkController
         /** @var Session $authenticator */
         $authenticator = $this->app->auth()->setAuthenticator('session')->getAuthenticator();
 
-        // Start a login action (e.g. 2FA) when one applies to this user,
-        // otherwise start the register action (email activation) for
-        // inactive users. Inactive users either way continue to an action
-        // instead of being logged straight in.
-        $started = $authenticator->startUpAction('login', $user);
-        if (! $started && ! $user->isActivated()) {
-            $started = $authenticator->startUpAction('register', $user);
+        // The magic link proves control of the mailbox, so an inactive
+        // account is activated right here, then continues like any other
+        // magic-link login.
+        if ($user->isNotActivated()) {
+            $user->activate();
+            $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            // Explicit dirty(): typed property assignment bypasses __set().
+            $user->dirty(['active' => true, 'updated_at' => $user->updated_at]);
+            $user->save();
         }
 
-        if ($started) {
-            $authenticator->setPendingLoginMethod(Session::ID_TYPE_MAGIC_LINK);
+        $authenticator->setPendingLoginMethod(Session::ID_TYPE_MAGIC_LINK);
+
+        // Start a login action (e.g. 2FA) when one applies, otherwise log
+        // the user in.
+        if ($authenticator->startUpAction('login', $user)) {
             $this->recordMagicLinkLogin($token, true, $identity->user_id);
             $this->redirectToAction($authenticator->getAction());
             return;
         }
 
-        $authenticator->setPendingLoginMethod(Session::ID_TYPE_MAGIC_LINK);
         $authenticator->loginById($identity->user_id);
 
         $this->recordMagicLinkLogin($token, true, $identity->user_id);
@@ -186,11 +190,6 @@ class MagicLinkController
     {
         if ($action instanceof \Enlivenapp\FlightShield\Authentication\Actions\Email2FA) {
             $this->app->redirect('/auth/2fa');
-            return;
-        }
-
-        if ($action instanceof \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator) {
-            $this->app->redirect('/auth/activate');
             return;
         }
 

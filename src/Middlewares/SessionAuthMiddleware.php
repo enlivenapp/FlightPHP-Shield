@@ -11,7 +11,6 @@ declare(strict_types=1);
 namespace Enlivenapp\FlightShield\Middlewares;
 
 use Enlivenapp\FlightShield\Authentication\Actions\Email2FA;
-use Enlivenapp\FlightShield\Authentication\Actions\EmailActivator;
 use flight\Engine;
 
 class SessionAuthMiddleware
@@ -37,8 +36,6 @@ class SessionAuthMiddleware
                 $action = $authenticator->getAction();
                 if ($action instanceof Email2FA) {
                     $this->app->redirect('/auth/2fa');
-                } elseif ($action instanceof EmailActivator) {
-                    $this->app->redirect('/auth/activate');
                 } else {
                     $this->app->redirect($loginUrl);
                 }
@@ -61,17 +58,10 @@ class SessionAuthMiddleware
             return;
         }
 
-        // Inactive users are sent to the register (activation) action when
-        // one applies, otherwise they are logged out
+        // Inactive users cannot hold a session
         if ($user !== null && ! $user->isActivated()) {
-            if (! $auth->getAuthenticator()->startUpAction('register', $user)) {
-                $auth->logout();
-                $this->app->redirect($loginUrl);
-                $this->app->halt(303);
-                return;
-            }
-
-            $this->app->redirect('/auth/activate');
+            $auth->logout();
+            $this->app->redirect($loginUrl);
             $this->app->halt(303);
             return;
         }

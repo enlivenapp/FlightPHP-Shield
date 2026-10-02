@@ -10,10 +10,6 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Controllers;
 
-use Enlivenapp\FlightShield\Models\User;
-use Enlivenapp\FlightShield\Models\UserIdentity;
-use Enlivenapp\FlightShield\Passwords\Passwords;
-use Enlivenapp\FlightShield\Validation\ValidationRules;
 use flight\Engine;
 
 class RegisterController
@@ -51,96 +47,34 @@ class RegisterController
             return;
         }
 
-        $request = $this->app->request();
-        $data = $request->data;
+        $data = $this->app->request()->data;
 
-        $email    = trim($data->email ?? '');
-        $username = trim($data->username ?? '');
-        $password = $data->password ?? '';
-        $passConf = $data->password_confirm ?? '';
+        $fields = [
+            'username'         => trim($data->username ?? ''),
+            'email'            => trim($data->email ?? ''),
+            'password'         => $data->password ?? '',
+            'password_confirm' => $data->password_confirm ?? '',
+        ];
 
-        // Validate input fields
-        $validator = new ValidationRules($this->config['passwords'] ?? []);
-        $errors = $validator->validate(
-            ['username' => $username, 'email' => $email, 'password' => $password, 'password_confirm' => $passConf],
-            $validator->getRegistrationRules()
-        );
+        // Account creation, validation, and the activation email all live
+        // behind this one call. No session is touched.
+        $result = $this->app->auth()->register($fields);
 
-        // Run password through strength validators
-        $passwords = new Passwords($this->config['passwords'] ?? []);
-        $tempUser = new User();
-        $tempUser->username = $username ?: null;
+        if (! $result->isOK()) {
+            $errors = $result->extraInfo();
 
-        $passResult = $passwords->check($password, $tempUser);
-        if (! $passResult->isOK()) {
-            $errors['password_strength'] = $passResult->reason();
-        }
+            if (! is_array($errors) || $errors === []) {
+                $errors = [$result->reason() ?? 'Registration failed.'];
+            }
 
-        if (! empty($errors)) {
             $this->app->render('register', [
                 'errors' => array_values($errors),
                 'config' => $this->config,
-                'old'    => ['email' => $email, 'username' => $username],
+                'old'    => ['email' => $fields['email'], 'username' => $fields['username']],
             ]);
             return;
         }
 
-        // Check if email already exists - show same success page either way
-        /** @var UserIdentityRepository $identityRepo */
-        $identityModel = new UserIdentity(\Flight::db());
-        $existing = $identityModel->getIdentityBySecret(UserIdentity::TYPE_EMAIL_PASSWORD, $email);
-
-        if ($existing !== null) {
-            // Send notice to the existing email address
-            $sender = $this->config['email_sender'] ?? null;
-            if ($sender !== null && is_callable($sender)) {
-                $body = $this->app->view()->fetch('Email/email_register_existing', [
-                    'ipAddress' => $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
-                    'date'      => date('Y-m-d H:i:s'),
-                ]);
-                $sender($email, 'Registration Attempt', $body);
-            }
-
-            $this->app->render('register_success', ['config' => $this->config]);
-            return;
-        }
-
-        // Create user - inactive when email activation is required. An
-        // empty action class disables the action entirely (user logs in).
-        $actionClass = $this->config['actions']['register'] ?? null;
-        if ($actionClass === '') {
-            $actionClass = null;
-        }
-        $requiresActivation = is_string($actionClass) && is_a($actionClass, \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator::class, true);
-
-        $user = new User(\Flight::db());
-        $user->username   = $username ?: null;
-        $user->active     = !$requiresActivation;
-        $user->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-
-        $user->insert();
-
-        // Create email identity
-        $identityModel->createEmailIdentity($user, [
-            'email'         => $email,
-            'password_hash' => $passwords->hash($password),
-        ]);
-
-        // Add to default group
-        $defaultGroup = $this->config['default_group'] ?? 'user';
-        $user->addGroup($defaultGroup);
-
-        // Start the register action only when configured and applicable
-        // to the user (conditional actions may not apply). Otherwise,
-        // log the user straight in.
-        /** @var \Enlivenapp\FlightShield\Authentication\Authenticators\Session $authenticator */
-        $authenticator = $this->app->auth()->setAuthenticator('session')->getAuthenticator();
-        if (! $authenticator->startUpAction('register', $user)) {
-            $this->app->auth()->login($user);
-        }
-
-        // Always show the same success page
         $this->app->render('register_success', ['config' => $this->config]);
     }
 }

@@ -23,11 +23,11 @@
  *   GET  /auth/2fa                - Show 2FA verify page (sends code)
  *   POST /auth/2fa/verify         - Verify 2FA code
  *   POST /auth/2fa/resend         - Resend 2FA code
- *   GET  /auth/activate           - Show activation page (sends email)
- *   GET  /auth/activate/verify    - Verify activation token
+ *   GET  /auth/activate/verify    - Verify activation token (from the email)
  */
 
 use Enlivenapp\FlightCsrf\Middlewares\CsrfMiddleware;
+use Enlivenapp\FlightShield\Authentication\Actions\EmailActivator;
 use Enlivenapp\FlightShield\Controllers\LoginController;
 use Enlivenapp\FlightShield\Controllers\MagicLinkController;
 use Enlivenapp\FlightShield\Controllers\RegisterController;
@@ -103,23 +103,7 @@ $router->post('/2fa/resend', function () use ($app) {
     echo $action->handle($app);
 })->addMiddleware(new CsrfMiddleware($app))->addMiddleware(new RateLimitMiddleware($app));
 
-// Email Activation
-$router->get('/activate', function () use ($app) {
-    $authenticator = $app->auth()->setAuthenticator('session')->getAuthenticator();
-    $action = $authenticator->getAction();
-    if ($action === null || !$action instanceof \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator) {
-        $app->redirect('/');
-        return;
-    }
-    echo $action->show($app);
-});
-
+// Email Activation (the link emailed at registration; token-only, no session)
 $router->get('/activate/verify', function () use ($app) {
-    $authenticator = $app->auth()->setAuthenticator('session')->getAuthenticator();
-    $action = $authenticator->getAction();
-    if ($action === null || !$action instanceof \Enlivenapp\FlightShield\Authentication\Actions\EmailActivator) {
-        $app->redirect('/');
-        return;
-    }
-    echo $action->verify($app);
+    echo (new EmailActivator())->verify($app);
 })->addMiddleware(new RateLimitMiddleware($app));

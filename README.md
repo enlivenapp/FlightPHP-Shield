@@ -27,7 +27,7 @@ Flight Shield is an authentication and authorization plugin for [FlightPHP](http
 - Groups and permissions (role-based access control with wildcard support)
 - Per-user direct permissions in addition to group-inherited permissions
 - Email two-factor authentication (2FA) as an optional post-login action
-- Email activation on registration as an optional post-register action
+- Email activation on registration, resolved from the emailed token alone (no session until the link is used)
 - Magic link login
 - Password validators: composition (min/max length), nothing-personal, dictionary (65k common passwords), and pwned (Have I Been Pwned API)
 - Automatic password rehashing when the cost parameters change
@@ -225,9 +225,13 @@ When `session.allow_remembering` is `true` (the default), calling `auth('session
 
 Expired tokens are purged probabilistically (20% of successful remember-me logins) to avoid a separate cleanup job.
 
-### Post-login actions (2FA, email activation)
+### Post-login actions (2FA)
 
-When `actions.login` is set to an action class (e.g. `Email2FA`), `attempt()` puts the session into a `STATE_PENDING` by storing the user ID and action class name in the session. The user isn't considered fully logged in until the action completes. The routes at `/auth/2fa` and `/auth/activate` drive this flow.
+When `actions.login` is set to an action class (e.g. `Email2FA`), `attempt()` puts the session into a `STATE_PENDING` by storing the user ID and action class name in the session. The user isn't considered fully logged in until the action completes. The `/auth/2fa` routes drive this flow.
+
+### Email activation
+
+Set `actions.register` to `EmailActivator::class` to require email activation. Registration creates the account inactive and sends the activation link in the same request, without touching the session. The link at `/auth/activate/verify?token=...` resolves the account from the token alone, so it works from any browser or device: the account is activated, the token is burned, and a session starts for the login hand-off (running the `actions.login` action first when one applies).
 
 ### Configuration
 
@@ -695,7 +699,7 @@ return [
 | `personal_fields` | `[]` | No-op in this port: `NothingPersonalValidator` pulls username/email from the identity record itself |
 | `email_sender` | `null` | Callback for outbound emails (see Email Setup) |
 | `actions.login` | `null` | Post-login action class (`Email2FA::class` or `null`) |
-| `actions.register` | `null` | Post-register action class (`EmailActivator::class` or `null`) |
+| `actions.register` | `null` | Set to `EmailActivator::class` to require email activation at registration; `null` creates accounts active |
 | `token_header` | `'Authorization'` | Header read by the `AccessTokens` authenticator |
 | `hmac_header` | `'Authorization'` | Header read by the `HmacSha256` authenticator |
 
@@ -801,8 +805,7 @@ Shield registers the following routes under the prefix defined by the returned `
 | GET | `/auth/2fa` | Show 2FA verification page (sends code) |
 | POST | `/auth/2fa/verify` | Verify 2FA code - CSRF + rate limit |
 | POST | `/auth/2fa/resend` | Resend 2FA code - CSRF + rate limit |
-| GET | `/auth/activate` | Show activation page (sends email) |
-| GET | `/auth/activate/verify` | Verify email activation token |
+| GET | `/auth/activate/verify` | Verify email activation token (from the email; session-free) |
 
 ---
 
