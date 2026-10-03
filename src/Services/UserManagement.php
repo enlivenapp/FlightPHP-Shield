@@ -29,6 +29,9 @@ use Enlivenapp\FlightShield\Result;
  */
 class UserManagement
 {
+    private const USERNAME_MAX_LENGTH = 30;
+    private const USERNAME_MIN_LENGTH = 3;
+
     protected \PDO $pdo;
     protected array $config;
     protected Passwords $passwords;
@@ -100,6 +103,9 @@ class UserManagement
      * Validates password strength against the configured validators and
      * rejects duplicate email addresses.
      *
+     * When $username is empty a unique one is derived from the email local
+     * part. A supplied username is used as-is and rejected when taken.
+     *
      * When $requiresActivation is true the user is created inactive; the
      * caller is responsible for sending an activation link and activating
      * the account later.
@@ -116,10 +122,6 @@ class UserManagement
         $username = trim($username);
         $email = trim($email);
 
-        if ($username === '') {
-            return $this->fail('Username is required.');
-        }
-
         if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return $this->fail('A valid email address is required.');
         }
@@ -129,6 +131,15 @@ class UserManagement
 
         if ($existing !== null) {
             return $this->fail('Email address is already in use.');
+        }
+
+        $derived = $username === '';
+        $base    = $derived ? $this->deriveUsername($email) : $username;
+
+        if ($derived) {
+            $username = $this->uniqueUsername($base);
+        } elseif ($this->usernameExists($username)) {
+            return $this->fail('Username is already in use.');
         }
 
         $tempUser = new User();
@@ -151,23 +162,51 @@ class UserManagement
 
         $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $user = new User($this->pdo);
-        $user->username   = $username;
-        $user->active     = ! $requiresActivation;
-        $user->created_at = $now;
-        $user->updated_at = $now;
-        $user->insert();
+        // A derived username can still lose a race with a concurrent signup,
+        // so retry it with a suffix. An explicit username gets a plain error.
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $ownsTransaction = ! $this->pdo->inTransaction();
 
-        (new UserIdentity($this->pdo))->createEmailIdentity($user, [
-            'email'         => $email,
-            'password_hash' => $this->passwords->hash($password),
-        ]);
+            if ($ownsTransaction) {
+                $this->pdo->beginTransaction();
+            }
 
-        $user->addGroup($groupAlias);
+            try {
+                $user = new User($this->pdo);
+                $user->username   = $username;
+                $user->active     = ! $requiresActivation;
+                $user->created_at = $now;
+                $user->updated_at = $now;
+                $user->insert();
 
-        return (new Result())
-            ->setSuccess(true)
-            ->setExtraInfo($user);
+                (new UserIdentity($this->pdo))->createEmailIdentity($user, [
+                    'email'         => $email,
+                    'password_hash' => $this->passwords->hash($password),
+                ]);
+
+                $user->addGroup($groupAlias);
+
+                if ($ownsTransaction) {
+                    $this->pdo->commit();
+                }
+
+                return (new Result())
+                    ->setSuccess(true)
+                    ->setExtraInfo($user);
+            } catch (\Exception $e) {
+                if ($ownsTransaction && $this->pdo->inTransaction()) {
+                    $this->pdo->rollBack();
+                }
+
+                if (! $derived) {
+                    return $this->fail('Username is already in use.');
+                }
+
+                $username = $this->suffixedUsername($base, $attempt + 2);
+            }
+        }
+
+        return $this->fail('Account could not be created. Please try again.');
     }
 
     // -----------------------------------------------------------------
@@ -194,19 +233,20 @@ class UserManagement
 
         if (array_key_exists('username', $data)) {
             $username = trim((string) $data['username']);
+
             if ($username === '') {
                 return $this->fail('Username cannot be empty.');
             }
+
+            if ($username !== $user->username && $this->usernameExists($username)) {
+                return $this->fail('Username is already in use.');
+            }
+
             $user->username = $username;
         }
 
         if (!$hasEmail && !$hasPassword) {
-            $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-            $user->save();
-
-            return (new Result())
-                ->setSuccess(true)
-                ->setExtraInfo($user);
+            return $this->saveProfile($user, null);
         }
 
         $identity = $this->getEmailIdentity($user);
@@ -241,27 +281,20 @@ class UserManagement
             $identity->secret2 = $this->passwords->hash($data['password']);
         }
 
-        $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $identity->save();
-
-        $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $user->save();
-
-        return (new Result())
-            ->setSuccess(true)
-            ->setExtraInfo($user);
+        return $this->saveProfile($user, $identity);
     }
 
     /**
      * Activate or deactivate a user.
      *
-     * Inactive users cannot log in.
+     * Inactive users cannot log in. A database failure comes back as a
+     * normal error rather than escaping as a server error.
      *
      * Note: 'active' is pushed through dirty() explicitly - boolean flips
      * (true -> false) on entities created via insert() are otherwise
      * invisible to ActiveRecord's loose property/data comparison.
      */
-    public function setActive(User $user, bool $active): void
+    public function setActive(User $user, bool $active): Result
     {
         if ($active) {
             $user->activate();
@@ -272,21 +305,132 @@ class UserManagement
         $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
         $user->updated_at = $now;
         $user->dirty(['active' => $user->active, 'updated_at' => $now]);
-        $user->save();
+
+        try {
+            $user->save();
+        } catch (\Exception $e) {
+            return $this->fail('The account status could not be saved. Please try again.');
+        }
+
+        return (new Result())
+            ->setSuccess(true)
+            ->setExtraInfo($user);
     }
 
     /**
      * Soft-delete a user. The record is preserved but excluded
-     * from all future queries.
+     * from all future queries. A database failure comes back as a normal
+     * error rather than escaping as a server error.
      */
-    public function delete(User $user): void
+    public function delete(User $user): Result
     {
-        $user->softDelete();
+        try {
+            $user->softDelete();
+        } catch (\Exception $e) {
+            return $this->fail('The account could not be deleted. Please try again.');
+        }
+
+        return (new Result())
+            ->setSuccess(true)
+            ->setExtraInfo($user);
+    }
+
+    /**
+     * Write a user's profile changes.
+     *
+     * A database failure comes back as a normal error rather than escaping
+     * as a server error.
+     */
+    protected function saveProfile(User $user, ?UserIdentity $identity): Result
+    {
+        $ownsTransaction = ! $this->pdo->inTransaction();
+
+        if ($ownsTransaction) {
+            $this->pdo->beginTransaction();
+        }
+
+        try {
+            $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+
+            if ($identity !== null) {
+                $identity->updated_at = $now;
+                $identity->save();
+            }
+
+            $user->updated_at = $now;
+            $user->save();
+
+            if ($ownsTransaction) {
+                $this->pdo->commit();
+            }
+        } catch (\Exception $e) {
+            if ($ownsTransaction && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            return $this->fail('The profile could not be saved. Please try again.');
+        }
+
+        return (new Result())
+            ->setSuccess(true)
+            ->setExtraInfo($user);
     }
 
     // -----------------------------------------------------------------
     // Internal
     // -----------------------------------------------------------------
+
+    /**
+     * Whether any account already uses this username.
+     *
+     * Soft-deleted rows count here: the unique index still covers them.
+     */
+    protected function usernameExists(string $username): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM users WHERE username = ?');
+        $stmt->execute([$username]);
+
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Build an allowed username from the email local part.
+     */
+    protected function deriveUsername(string $email): string
+    {
+        $local = strstr($email, '@', true);
+        $local = $local === false ? $email : $local;
+
+        $base = preg_replace('/[^a-zA-Z0-9.]/', '', $local);
+        $base = is_string($base) ? trim($base, '.') : '';
+
+        if (strlen($base) < self::USERNAME_MIN_LENGTH) {
+            $base = 'user' . $base;
+        }
+
+        return substr($base, 0, self::USERNAME_MAX_LENGTH);
+    }
+
+    /**
+     * Append a number to a derived username until it is free.
+     */
+    protected function uniqueUsername(string $base): string
+    {
+        $candidate = $base;
+
+        for ($suffix = 2; $this->usernameExists($candidate); $suffix++) {
+            $candidate = $this->suffixedUsername($base, $suffix);
+        }
+
+        return $candidate;
+    }
+
+    protected function suffixedUsername(string $base, int $suffix): string
+    {
+        $tail = (string) $suffix;
+
+        return substr($base, 0, self::USERNAME_MAX_LENGTH - strlen($tail)) . $tail;
+    }
 
     protected function getEmailIdentity(User $user): ?UserIdentity
     {

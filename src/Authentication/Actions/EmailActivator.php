@@ -114,11 +114,17 @@ class EmailActivator
         }
 
         if ($user->isNotActivated()) {
-            $user->activate();
-            $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-            // Explicit dirty(): typed property assignment bypasses __set().
-            $user->dirty(['active' => true, 'updated_at' => $user->updated_at]);
-            $user->save();
+            try {
+                $user->activate();
+                $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+                // Explicit dirty(): typed property assignment bypasses __set().
+                $user->dirty(['active' => true, 'updated_at' => $user->updated_at]);
+                $user->save();
+            } catch (\Exception $e) {
+                return $app->view()->fetch('activate', [
+                    'error' => 'The account could not be activated. Please try again.',
+                ]);
+            }
         }
 
         // The token is spent. Sessions take over from here for the login step.

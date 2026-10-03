@@ -68,6 +68,20 @@ class User extends \flight\ActiveRecord
         return $user;
     }
 
+    /**
+     * Find a user by ID including soft-deleted rows.
+     *
+     * Used where the caller has to tell "no such account" apart from
+     * "this account is deleted".
+     */
+    public function findByIdIncludingDeleted(int|string $id): ?self
+    {
+        $user = new self($this->getDatabaseConnection());
+        $user->eq('id', $id)->find();
+
+        return $user->isHydrated() ? $user : null;
+    }
+
     public function findByCredentials(array $credentials): ?self
     {
         if (isset($credentials['email'])) {

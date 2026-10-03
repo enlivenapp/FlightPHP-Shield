@@ -75,11 +75,6 @@
             {% csrf_field %}
 
             <div class="shield-field">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" value="{{ old.username | default('') }}">
-            </div>
-
-            <div class="shield-field">
                 <label for="email">Email</label>
                 <input type="email" id="email" name="email" value="{{ old.email | default('') }}" required>
             </div>

@@ -116,7 +116,12 @@ class ShieldUserCommand extends AbstractBaseCommand
         $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
-        $this->users()->setActive($user, $active);
+        $result = $this->users()->setActive($user, $active);
+
+        if (! $result->isOK()) {
+            $io->error($result->reason() ?? 'The account status could not be saved.', true);
+            return;
+        }
 
         $status = $active ? 'activated' : 'deactivated';
         $io->info("User \"{$user->username}\" {$status}.", true);
@@ -127,7 +132,12 @@ class ShieldUserCommand extends AbstractBaseCommand
         $user = $this->findUser($io, $name, $email);
         if ($user === null) return;
 
-        $this->users()->delete($user);
+        $result = $this->users()->delete($user);
+
+        if (! $result->isOK()) {
+            $io->error($result->reason() ?? 'The account could not be deleted.', true);
+            return;
+        }
 
         $io->info("User \"{$user->username}\" deleted (soft).", true);
     }

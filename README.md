@@ -231,6 +231,8 @@ When `actions.login` is set to an action class (e.g. `Email2FA`), `attempt()` pu
 
 ### Email activation
 
+Registration takes an email and a password. Shield derives the username from the email local part and adds a number when it is taken, so callers never supply one.
+
 Set `actions.register` to `EmailActivator::class` to require email activation. Registration creates the account inactive and sends the activation link in the same request, without touching the session. The link at `/auth/activate/verify?token=...` resolves the account from the token alone, so it works from any browser or device: the account is activated, the token is burned, and a session starts for the login hand-off (running the `actions.login` action first when one applies).
 
 ### Configuration

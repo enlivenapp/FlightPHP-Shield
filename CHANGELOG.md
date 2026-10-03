@@ -4,6 +4,19 @@ This changelog follows [Conventional Commits](https://www.conventionalcommits.or
 
 ---
 
+## 0.5.1 - 2026-10-02
+
+- feat(register): derive the username from the email and ignore any username sent by the caller
+- fix(register): return a normal error instead of a database error when a username is taken
+- fix(register): refuse a registration attempt for the email of a soft-deleted account
+- fix(register): report a failed activation email and resend the link when an unactivated account registers again
+- fix(users): return a normal error when a username rename, status change, or delete fails
+- fix(activate): show an error page when the activation write fails
+- fix(magic-link): go back to login when the activation write fails
+- test: add `UserManagementTest`
+
+---
+
 ## 0.5.0 - 2026-10-02
 
 - feat(register): create the account and send the activation email from one call, with no session

@@ -125,13 +125,15 @@ class Auth
      * Create an account from registration fields.
      *
      * This is the one entry point for registration, for the built-in form and
-     * for any other caller. No session is read or written. When the config
-     * requires email activation, the account is created inactive and the
-     * activation email is sent here.
+     * for any other caller. Only email and password are needed: the username
+     * is derived from the email, and any username in $fields is ignored. No
+     * session is read or written. When the config requires email activation,
+     * the account is created inactive and the activation email is sent here.
      *
      * On failure the field errors are returned as an array via extraInfo(),
      * with the first error also set as the reason. A duplicate email address
-     * reports success without revealing whether the account exists.
+     * reports success without revealing whether the account exists, except
+     * for an address belonging to a soft-deleted account, which is refused.
      */
     public function register(array $fields): Result
     {
@@ -153,14 +155,13 @@ class Auth
             ->getIdentityBySecret(UserIdentity::TYPE_EMAIL_PASSWORD, $email);
 
         if ($existing !== null) {
-            $this->sendRegistrationAttemptNotice($email);
-            return (new Result())->setSuccess(true);
+            return $this->followUpOnExistingAccount($existing->user_id, $email);
         }
 
         $requiresActivation = $this->requiresEmailActivation();
 
         $result = $this->users()->create(
-            (string) ($fields['username'] ?? ''),
+            '',
             $email,
             (string) ($fields['password'] ?? ''),
             $fields['group'] ?? null,
@@ -174,7 +175,13 @@ class Auth
         if ($requiresActivation) {
             /** @var User $user */
             $user = $result->extraInfo();
-            (new EmailActivator())->begin($user, $this->app);
+
+            if (! $this->trySendActivation($user)) {
+                return (new Result())
+                    ->setSuccess(false)
+                    ->setReason('We could not send the activation email. Please try again.')
+                    ->setExtraInfo(['We could not send the activation email. Please try again.']);
+            }
         }
 
         return $result;
@@ -193,22 +200,73 @@ class Auth
     }
 
     /**
+     * Handle a registration attempt for an address that already has an
+     * identity row.
+     *
+     * A soft-deleted account refuses the attempt. An unactivated account
+     * gets a fresh link. Anything else gets the usual "someone tried to
+     * register" notice. Every outcome other than the refusal reports
+     * success, so the form cannot be used to probe for registered
+     * addresses.
+     */
+    protected function followUpOnExistingAccount(int|string $userId, string $email): Result
+    {
+        $user = (new User($this->app->db()))->findByIdIncludingDeleted($userId);
+
+        if ($user !== null && $user->deleted_at !== null) {
+            return (new Result())
+                ->setSuccess(false)
+                ->setReason('That email address is no longer available.')
+                ->setExtraInfo(['That email address is no longer available.']);
+        }
+
+        if ($this->requiresEmailActivation() && $user !== null && $user->isNotActivated()) {
+            $this->trySendActivation($user);
+            return (new Result())->setSuccess(true);
+        }
+
+        $this->sendRegistrationAttemptNotice($email);
+
+        return (new Result())->setSuccess(true);
+    }
+
+    /**
+     * Send the activation link, turning a mail failure into a return value
+     * rather than a server error.
+     */
+    protected function trySendActivation(User $user): bool
+    {
+        try {
+            (new EmailActivator())->begin($user, $this->app);
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
      * Tell an existing address that someone tried to register with it.
+     *
+     * Best effort: a mail failure here must not fail the request.
      */
     protected function sendRegistrationAttemptNotice(string $email): void
     {
-        $sender = $this->config['email_sender'] ?? null;
+        try {
+            $sender = $this->config['email_sender'] ?? null;
 
-        if ($sender === null || ! is_callable($sender)) {
-            return;
+            if ($sender === null || ! is_callable($sender)) {
+                return;
+            }
+
+            $body = $this->app->view()->fetch('Email/email_register_existing', [
+                'ipAddress' => $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
+                'date'      => date('Y-m-d H:i:s'),
+            ]);
+
+            $sender($email, 'Registration Attempt', $body);
+        } catch (\Throwable $e) {
+            // Swallowed on purpose.
         }
-
-        $body = $this->app->view()->fetch('Email/email_register_existing', [
-            'ipAddress' => $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
-            'date'      => date('Y-m-d H:i:s'),
-        ]);
-
-        $sender($email, 'Registration Attempt', $body);
     }
 
     // -----------------------------------------------------------------

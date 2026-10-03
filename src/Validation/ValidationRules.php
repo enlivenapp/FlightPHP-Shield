@@ -30,12 +30,6 @@ class ValidationRules
     public function getRegistrationRules(): array
     {
         return [
-            'username' => [
-                'required'  => true,
-                'min_length' => 3,
-                'max_length' => 30,
-                'pattern'    => '/^[a-zA-Z0-9.]+$/',
-            ],
             'email' => [
                 'required' => true,
                 'email'    => true,

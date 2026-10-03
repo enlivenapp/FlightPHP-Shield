@@ -50,7 +50,6 @@ class RegisterController
         $data = $this->app->request()->data;
 
         $fields = [
-            'username'         => trim($data->username ?? ''),
             'email'            => trim($data->email ?? ''),
             'password'         => $data->password ?? '',
             'password_confirm' => $data->password_confirm ?? '',
@@ -70,7 +69,7 @@ class RegisterController
             $this->app->render('register', [
                 'errors' => array_values($errors),
                 'config' => $this->config,
-                'old'    => ['email' => $fields['email'], 'username' => $fields['username']],
+                'old'    => ['email' => $fields['email']],
             ]);
             return;
         }

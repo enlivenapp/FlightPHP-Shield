@@ -34,7 +34,7 @@ class ValidationRulesTest extends TestCase
     {
         $rules = $this->rules->getRegistrationRules();
 
-        $this->assertArrayHasKey('username', $rules);
+        $this->assertArrayNotHasKey('username', $rules);
         $this->assertArrayHasKey('email', $rules);
         $this->assertArrayHasKey('password', $rules);
         $this->assertArrayHasKey('password_confirm', $rules);
@@ -88,15 +88,6 @@ class ValidationRulesTest extends TestCase
         $pwRules = $rules->getPasswordRules();
 
         $this->assertSame(10, $pwRules['min_length']);
-    }
-
-    #[Test]
-    public function registrationRulesUsernameHasPatternRule(): void
-    {
-        $rules = $this->rules->getRegistrationRules();
-
-        $this->assertArrayHasKey('pattern', $rules['username']);
-        $this->assertStringContainsString('a-zA-Z0-9', $rules['username']['pattern']);
     }
 
     #[Test]
@@ -294,15 +285,14 @@ class ValidationRulesTest extends TestCase
     {
         $rules = $this->rules->getRegistrationRules();
         $errors = $this->rules->validate([
-            'username'         => '',
             'email'            => 'not-an-email',
             'password'         => 'short',
             'password_confirm' => 'mismatch',
         ], $rules);
 
-        $this->assertArrayHasKey('username', $errors);
         $this->assertArrayHasKey('email', $errors);
         $this->assertArrayHasKey('password', $errors);
+        $this->assertArrayHasKey('password_confirm', $errors);
         $this->assertGreaterThanOrEqual(3, count($errors));
     }
 

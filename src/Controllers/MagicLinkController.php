@@ -159,11 +159,17 @@ class MagicLinkController
         // account is activated right here, then continues like any other
         // magic-link login.
         if ($user->isNotActivated()) {
-            $user->activate();
-            $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-            // Explicit dirty(): typed property assignment bypasses __set().
-            $user->dirty(['active' => true, 'updated_at' => $user->updated_at]);
-            $user->save();
+            try {
+                $user->activate();
+                $user->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+                // Explicit dirty(): typed property assignment bypasses __set().
+                $user->dirty(['active' => true, 'updated_at' => $user->updated_at]);
+                $user->save();
+            } catch (\Exception $e) {
+                $this->recordMagicLinkLogin($token, false, $identity->user_id);
+                $this->app->redirect($this->config['redirects']['login'] ?? '/auth/login');
+                return;
+            }
         }
 
         $authenticator->setPendingLoginMethod(Session::ID_TYPE_MAGIC_LINK);
@@ -215,6 +221,10 @@ class MagicLinkController
         $login->user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
         $login->date       = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $login->insert();
+        try {
+            $login->insert();
+        } catch (\Exception $e) {
+            // Recording the attempt is best effort.
+        }
     }
 }

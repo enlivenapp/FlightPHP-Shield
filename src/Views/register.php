@@ -82,11 +82,6 @@
             <?= csrf_field() ?>
 
             <div class="shield-field">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" value="<?= htmlspecialchars($old['username'] ?? '') ?>">
-            </div>
-
-            <div class="shield-field">
                 <label for="email">Email</label>
                 <input type="email" id="email" name="email" value="<?= htmlspecialchars($old['email'] ?? '') ?>" required>
             </div>
