@@ -58,7 +58,7 @@ class RobotDetector
 
     /**
      * @param list<string> $keywords Extra keywords to match against
-     * @param array        $config   'bot_detection' config: 'enabled' and 'user_agents'
+     * @param array<string, mixed> $config   'bot_detection' config: 'enabled' and 'user_agents'
      */
     public static function isBot(
         ?string $userAgent = null,

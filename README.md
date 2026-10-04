@@ -7,12 +7,16 @@
 [![Contributors](https://img.shields.io/github/contributors/enlivenapp/FlightPHP-Shield?style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/graphs/contributors)
 [![Latest Release](https://img.shields.io/github/v/release/enlivenapp/FlightPHP-Shield?style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/releases)
 [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-blue?style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/pulls)
+[![PHPUnit](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/enlivenapp/FlightPHP-Shield/badges/phpunit.json&style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/actions/workflows/tests.yml)
+[![PHPStan](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/enlivenapp/FlightPHP-Shield/badges/phpstan.json&style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/actions/workflows/tests.yml)
+[![Psalm](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/enlivenapp/FlightPHP-Shield/badges/psalm.json&style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/actions/workflows/tests.yml)
+[![Infection](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/enlivenapp/FlightPHP-Shield/badges/infection.json&style=for-the-badge)](https://github.com/enlivenapp/FlightPHP-Shield/actions/workflows/tests.yml)
+
 
 # Flight Shield
 
-**I noticed folks downloading some of these packages. I'm super grateful, Thank You! I would like to let folks know until this notice disappears I'm doing a lot of breaking changes without worrying about them. Once versions are up around 0.5.x things should settle down.**
 
-Flight Shield is an authentication and authorization plugin for [FlightPHP](https://flightphp.com/). It was ported and adapted from [CodeIgniter4 Shield](https://github.com/codeigniter4/shield) around v1.2. We watch for security patches, and we've made significant functionality additions. It runs inside [FlightPHP](https://github.com/flightphp/core) as used by [Pubvana CMS v3](https://github.com/Pubvana-CMS/pubvana). It gives you session login, access token auth, HMAC-SHA256 request signing, JWT verification, role-based groups and permissions, password validation, and route-level middlewares.
+Flight Shield is an authentication and authorization plugin for [FlightPHP](https://flightphp.com/). It was ported and adapted from [CodeIgniter4 Shield](https://github.com/codeigniter4/shield) around its v1.2. We watch for security patches, found some on our own and we've made significant functionality additions. It runs inside [FlightPHP](https://github.com/flightphp/core) as used by [Pubvana CMS v3](https://github.com/Pubvana-CMS/pubvana). It provides session login, access token auth, HMAC-SHA256 request signing, JWT verification, role-based groups and permissions, password validation, and route-level middlewares.
 
 ---
 
@@ -27,7 +31,7 @@ Flight Shield is an authentication and authorization plugin for [FlightPHP](http
 - Groups and permissions (role-based access control with wildcard support)
 - Per-user direct permissions in addition to group-inherited permissions
 - Email two-factor authentication (2FA) as an optional post-login action
-- Email activation on registration, resolved from the emailed token alone (no session until the link is used)
+- Email activation on registration, resolved from the emailed token alone; an activation page resends the link with a server-side cooldown
 - Magic link login
 - Password validators: composition (min/max length), nothing-personal, dictionary (65k common passwords), and pwned (Have I Been Pwned API)
 - Automatic password rehashing when the cost parameters change
@@ -48,9 +52,13 @@ Flight Shield is an authentication and authorization plugin for [FlightPHP](http
 - `flightphp/active-record` >=0.7 - all Shield models extend `\flight\ActiveRecord`
 - `enlivenapp/flight-csrf` ^0.2
 - `enlivenapp/flight-sessions` ^0.1 - database-backed session storage (all session state lives in SQL with encrypted payloads)
-- `firebase/php-jwt` ^6.0 *(optional, required only for JWT authentication)*
+- `firebase/php-jwt` ^7 *(optional, required only for JWT authentication)*
 
 ---
+
+## Testing
+
+{explain our testing here. What we test with (all of them), and a summary of the results for the current release version}
 
 ## Installation
 
@@ -234,6 +242,14 @@ When `actions.login` is set to an action class (e.g. `Email2FA`), `attempt()` pu
 Registration takes an email and a password. Shield derives the username from the email local part and adds a number when it is taken, so callers never supply one.
 
 Set `actions.register` to `EmailActivator::class` to require email activation. Registration creates the account inactive and sends the activation link in the same request, without touching the session. The link at `/auth/activate/verify?token=...` resolves the account from the token alone, so it works from any browser or device: the account is activated, the token is burned, and a session starts for the login hand-off (running the `actions.login` action first when one applies).
+
+The activation page at `/auth/activate` is the landing point for anyone whose account is not activated. It shows a message, an email field, and a resend button.
+
+- Submitting the login form with a correct password on an unactivated account redirects here. The password is checked first, so account state is only revealed to someone who already knows the password.
+- An expired or already-used token shows the same page with the error, under the `/auth/activate/verify` URL.
+- The resend button is the only thing that sends mail; loading the page never does. A 300-second server-side cooldown per account holds it back, and the remaining time is shown on the button.
+- Unknown, already-active, and banned addresses get the same message and no mail, so the form cannot be used to probe for accounts.
+- A wrong password on the login form stays a generic error and never reaches this page.
 
 ### Configuration
 
@@ -551,7 +567,7 @@ Flight::route('/account', function () { ... })
 
 ### `RateLimitMiddleware`
 
-Applied automatically to `POST /auth/login`, `POST /auth/magic-link`, `POST /auth/2fa/verify`, and `POST /auth/2fa/resend`. Can also be applied to custom routes.
+Applied automatically to `POST /auth/login`, `POST /auth/magic-link`, `POST /auth/2fa/verify`, `POST /auth/2fa/resend`, and `POST /auth/activate/resend`. Can also be applied to custom routes.
 
 Counts failed login attempts from the client IP across both `auth_logins` and `auth_token_logins` within the `decay_minutes` window. If `max_attempts` is reached and the most recent failure is still within the `lockout_minutes` window, the request is halted with HTTP 429 and a JSON error body.
 
@@ -807,7 +823,9 @@ Shield registers the following routes under the prefix defined by the returned `
 | GET | `/auth/2fa` | Show 2FA verification page (sends code) |
 | POST | `/auth/2fa/verify` | Verify 2FA code - CSRF + rate limit |
 | POST | `/auth/2fa/resend` | Resend 2FA code - CSRF + rate limit |
-| GET | `/auth/activate/verify` | Verify email activation token (from the email; session-free) |
+| GET | `/auth/activate` | Activation page (message + resend form) |
+| POST | `/auth/activate/resend` | Send a new activation email - CSRF + rate limit |
+| GET | `/auth/activate/verify` | Verify email activation token (from the email) |
 
 ---
 

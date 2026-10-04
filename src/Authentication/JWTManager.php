@@ -20,14 +20,27 @@ class JWTManager
     protected JWSEncoder $encoder;
     protected JWSDecoder $decoder;
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(array $config)
     {
         $this->encoder = new JWSEncoder($config);
-        $this->decoder = new JWSDecoder($config['keys'] ?? []);
+
+        $keys = $config['keys'] ?? [];
+        if (! is_array($keys)) {
+            $keys = [];
+        }
+        /** @var array<string, mixed> $keys */
+        $this->decoder = new JWSDecoder($keys);
     }
 
     /**
      * Generate a JWT for the given user.
+     */
+    /**
+     * @param array<string, mixed> $claims
+     * @param array<string, string>|null $headers
      */
     public function generateToken(
         User $user,
@@ -45,6 +58,10 @@ class JWTManager
 
     /**
      * Issue a JWT with arbitrary claims.
+     */
+    /**
+     * @param array<string, mixed> $claims
+     * @param array<string, string>|null $headers
      */
     public function issue(array $claims, ?int $ttl = null, string $keyset = 'default', ?array $headers = null): string
     {

@@ -21,12 +21,13 @@ use flight\Engine;
 class PermissionMiddleware
 {
     protected Engine $app;
+    /** @var list<string> */
     protected array $permissions;
 
     public function __construct(Engine $app, string ...$permissions)
     {
         $this->app = $app;
-        $this->permissions = $permissions;
+        $this->permissions = array_values($permissions);
     }
 
     public function before(): void
@@ -37,10 +38,17 @@ class PermissionMiddleware
             $config = $this->app->get('enlivenapp.flight-shield') ?? [];
             $this->app->redirect($config['redirects']['login'] ?? '/auth/login');
             $this->app->halt(303);
+            return;
         }
 
         $user = $auth->user();
         $config = $this->app->get('enlivenapp.flight-shield') ?? [];
+
+        if ($user === null) {
+            $this->app->redirect($config['redirects']['login'] ?? '/auth/login');
+            $this->app->halt(303);
+            return;
+        }
 
         foreach ($this->permissions as $permission) {
             if ($user->can($permission)) {

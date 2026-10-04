@@ -177,4 +177,73 @@ class RateLimitMiddlewareTest extends TestCase
         $this->assertTrue($app->haltCalled);
         $this->assertSame(429, $app->haltCode);
     }
+
+    // -----------------------------------------------------------------
+    // Endpoint id_type counting
+    // -----------------------------------------------------------------
+
+    protected function insertResendHit(string $ip, string $date): void
+    {
+        $this->pdo->prepare(
+            'INSERT INTO auth_logins (ip_address, id_type, identifier, date, success)
+             VALUES (?, ?, ?, ?, 1)'
+        )->execute([$ip, \Enlivenapp\FlightShield\Models\Login::ID_TYPE_ACTIVATION_RESEND, 'user@test.com', $date]);
+    }
+
+    #[Test]
+    public function countedIdTypeIgnoresLoginFailures(): void
+    {
+        $recent = (new \DateTimeImmutable('-5 minutes'))->format('Y-m-d H:i:s');
+        for ($i = 0; $i < 10; $i++) {
+            $this->insertFailure('auth_logins', '10.0.0.1', $recent);
+        }
+
+        $app = $this->makeEngine();
+        (new RateLimitMiddleware($app, 'activation_resend'))->before();
+
+        $this->assertFalse($app->haltCalled);
+    }
+
+    #[Test]
+    public function countedIdTypeIgnoresTokenLoginFailures(): void
+    {
+        $recent = (new \DateTimeImmutable('-5 minutes'))->format('Y-m-d H:i:s');
+        for ($i = 0; $i < 10; $i++) {
+            $this->insertFailure('auth_token_logins', '10.0.0.1', $recent);
+        }
+
+        $app = $this->makeEngine();
+        (new RateLimitMiddleware($app, 'activation_resend'))->before();
+
+        $this->assertFalse($app->haltCalled);
+    }
+
+    #[Test]
+    public function countedIdTypeBlocksOnSends(): void
+    {
+        $recent = (new \DateTimeImmutable('-5 minutes'))->format('Y-m-d H:i:s');
+        for ($i = 0; $i < 5; $i++) {
+            $this->insertResendHit('10.0.0.1', $recent);
+        }
+
+        $app = $this->makeEngine();
+        (new RateLimitMiddleware($app, 'activation_resend'))->before();
+
+        $this->assertTrue($app->haltCalled);
+        $this->assertSame(429, $app->haltCode);
+    }
+
+    #[Test]
+    public function countedIdTypeDoesNotBlockOtherIps(): void
+    {
+        $recent = (new \DateTimeImmutable('-5 minutes'))->format('Y-m-d H:i:s');
+        for ($i = 0; $i < 10; $i++) {
+            $this->insertResendHit('99.99.99.99', $recent);
+        }
+
+        $app = $this->makeEngine();
+        (new RateLimitMiddleware($app, 'activation_resend'))->before();
+
+        $this->assertFalse($app->haltCalled);
+    }
 }

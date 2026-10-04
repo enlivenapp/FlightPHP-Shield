@@ -25,16 +25,23 @@ class HmacSha256 implements AuthenticatorInterface
     public const ID_TYPE_HMAC_TOKEN = 'hmac_sha256';
 
     protected Engine $app;
+    /** @var array<string, mixed> */
     protected array $config;
     protected ?User $user = null;
     protected bool $tokenChecked = false;
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(Engine $app, array $config)
     {
         $this->app = $app;
         $this->config = $config;
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function attempt(array $credentials): Result
     {
         $result = $this->check($credentials);
@@ -61,6 +68,9 @@ class HmacSha256 implements AuthenticatorInterface
         return $result;
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function check(array $credentials): Result
     {
         if (! isset($credentials['token']) || $credentials['token'] === '') {
@@ -75,7 +85,7 @@ class HmacSha256 implements AuthenticatorInterface
         }
 
         $parts = preg_split('/:/', $token, -1, PREG_SPLIT_NO_EMPTY);
-        if (count($parts) !== 2) {
+        if ($parts === false || count($parts) !== 2) {
             return (new Result())
                 ->setSuccess(false)
                 ->setReason('Invalid HMAC token format.');
@@ -83,7 +93,6 @@ class HmacSha256 implements AuthenticatorInterface
 
         [$userKey, $signature] = $parts;
 
-        /** @var UserIdentityRepository $identityRepo */
         $identityModel = new UserIdentity(\Flight::db());
         $identity = $identityModel->getHmacTokenByKey($userKey);
 
@@ -113,6 +122,12 @@ class HmacSha256 implements AuthenticatorInterface
         $body   = $credentials['body'] ?? '';
         $secretKey = $identity->secret2;
 
+        if ($secretKey === null || $secretKey === '') {
+            return (new Result())
+                ->setSuccess(false)
+                ->setReason('Invalid HMAC token.');
+        }
+
         // Decrypt if HMAC encryption is configured
         if ($this->hasHmacEncryption()) {
             $encrypter = $this->getHmacEncrypter();
@@ -133,7 +148,11 @@ class HmacSha256 implements AuthenticatorInterface
         $unusedLifetime = $this->config['unused_token_lifetime'] ?? null;
         if ($unusedLifetime && $identity->last_used_at) {
             $cutoff = new \DateTimeImmutable("-{$unusedLifetime} seconds");
-            if ($identity->last_used_at < $cutoff) {
+            // Compare timestamps: last_used_at is a date string, and PHP
+            // compares a string against a DateTimeImmutable by casting the
+            // string to the object's type, which lands on the object's
+            // microsecond-precision date property.
+            if (strtotime((string) $identity->last_used_at) < $cutoff->getTimestamp()) {
                 return (new Result())
                     ->setSuccess(false)
                     ->setReason('HMAC token expired from disuse.');
@@ -143,7 +162,6 @@ class HmacSha256 implements AuthenticatorInterface
         // Touch last_used_at
         $identityModel->touchIdentity($identity);
 
-        /** @var UserRepository $userRepo */
         $userModel = new User(\Flight::db());
         $user = $userModel->findById($identity->user_id);
 

@@ -10,17 +10,21 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Controllers;
 
+use Enlivenapp\FlightShield\Authentication\Authenticators\Session;
 use flight\Engine;
 
 class LoginController
 {
     protected Engine $app;
+    /** @var array<string, mixed> */
     protected array $config;
 
     public function __construct(Engine $app, string $configPrepend)
     {
         $this->app = $app;
-        $this->config = $app->get($configPrepend) ?? [];
+        /** @var array<string, mixed> $config */
+        $config = $app->get($configPrepend) ?? [];
+        $this->config = $config;
     }
 
     public function showLogin(): void
@@ -63,6 +67,13 @@ class LoginController
         $result = $auth->attempt($credentials);
 
         if (! $result->isOK()) {
+            // Correct password, but the account is not activated. Send them
+            // to the activation page instead of a dead-end error.
+            if ($result->extraInfo() === Session::ACCOUNT_NOT_ACTIVATED) {
+                $this->app->redirect($this->config['redirects']['activate'] ?? '/auth/activate');
+                return;
+            }
+
             $this->app->render('login', [
                 'error'  => $result->reason(),
                 'config' => $this->config,
@@ -72,7 +83,7 @@ class LoginController
 
         // Check if we're in a pending state (2FA)
         $authenticator = $auth->getAuthenticator();
-        if (method_exists($authenticator, 'isPending') && $authenticator->isPending()) {
+        if ($authenticator instanceof Session && $authenticator->isPending()) {
             $action = $authenticator->getAction();
             if ($action instanceof \Enlivenapp\FlightShield\Authentication\Actions\Email2FA) {
                 $this->app->redirect('/auth/2fa');
@@ -84,7 +95,7 @@ class LoginController
 
         // Handle remember me
         if (! empty($data->remember)) {
-            if (method_exists($authenticator, 'remember')) {
+            if ($authenticator instanceof Session) {
                 $authenticator->remember();
             }
         }

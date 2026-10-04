@@ -12,7 +12,10 @@ namespace Enlivenapp\FlightShield\Models;
 
 class AuthGroupPermission extends \flight\ActiveRecord
 {
-    public function __construct($pdo = null, array $config = [])
+    /**
+     * @param array<string, mixed> $config
+     */
+    public function __construct(mixed $pdo = null, array $config = [])
     {
         parent::__construct($pdo, 'auth_group_permissions', $config);
     }

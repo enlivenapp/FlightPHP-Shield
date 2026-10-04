@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<files psalm-version="6.4.0@04f312ac6ea48ba1c3e5db4d815bf6d74641c0ee">
+  <file src="src/Authentication/Actions/Email2FA.php">
+    <UndefinedDocblockClass>
+      <code><![CDATA[$identityModel]]></code>
+      <code><![CDATA[$identityModel]]></code>
+      <code><![CDATA[$identityModel]]></code>
+    </UndefinedDocblockClass>
+  </file>
+  <file src="src/Authentication/Actions/EmailActivator.php">
+    <UndefinedDocblockClass>
+      <code><![CDATA[$identityModel]]></code>
+    </UndefinedDocblockClass>
+  </file>
+  <file src="src/Authentication/Authenticators/HmacSha256.php">
+    <UndefinedDocblockClass>
+      <code><![CDATA[$identityModel]]></code>
+      <code><![CDATA[$userModel]]></code>
+    </UndefinedDocblockClass>
+  </file>
+  <file src="src/Authentication/Authenticators/JWT.php">
+    <InvalidArgument>
+      <code><![CDATA[$headerValue]]></code>
+    </InvalidArgument>
+    <InvalidReturnStatement>
+      <code><![CDATA[$headerValue]]></code>
+    </InvalidReturnStatement>
+    <InvalidReturnType>
+      <code><![CDATA[string]]></code>
+    </InvalidReturnType>
+    <UndefinedDocblockClass>
+      <code><![CDATA[$userModel]]></code>
+    </UndefinedDocblockClass>
+  </file>
+  <file src="src/Authentication/JWT/Adapters/FirebaseAdapter.php">
+    <UndefinedClass>
+      <code><![CDATA[\Firebase\JWT\BeforeValidException]]></code>
+      <code><![CDATA[\Firebase\JWT\ExpiredException]]></code>
+      <code><![CDATA[\Firebase\JWT\Key]]></code>
+      <code><![CDATA[\Firebase\JWT\Key]]></code>
+      <code><![CDATA[\Firebase\JWT\SignatureInvalidException]]></code>
+      <code><![CDATA[array|\Firebase\JWT\Key]]></code>
+    </UndefinedClass>
+  </file>
+  <file src="src/Authorization/Authorizable.php">
+    <InvalidNullableReturnType>
+      <code><![CDATA[array]]></code>
+      <code><![CDATA[array]]></code>
+    </InvalidNullableReturnType>
+  </file>
+  <file src="src/Authorization/PermissionMatcher.php">
+    <InvalidArrayOffset>
+      <code><![CDATA[$grantSegments[$grantSegmentCount - 1]]]></code>
+    </InvalidArrayOffset>
+  </file>
+  <file src="src/Controllers/MagicLinkController.php">
+    <UndefinedDocblockClass>
+      <code><![CDATA[$identityModel]]></code>
+      <code><![CDATA[$identityModel]]></code>
+      <code><![CDATA[$userModel]]></code>
+      <code><![CDATA[$userModel]]></code>
+    </UndefinedDocblockClass>
+  </file>
+  <file src="src/Middlewares/JWTAuthMiddleware.php">
+    <InvalidArgument>
+      <code><![CDATA[$headerValue]]></code>
+    </InvalidArgument>
+  </file>
+</files>

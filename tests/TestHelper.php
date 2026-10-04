@@ -95,6 +95,7 @@ class TestHelper
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             permission VARCHAR(255) NOT NULL,
+            deny BOOLEAN DEFAULT 0,
             created_at DATETIME DEFAULT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )');

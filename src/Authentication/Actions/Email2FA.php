@@ -13,6 +13,7 @@ namespace Enlivenapp\FlightShield\Authentication\Actions;
 use Enlivenapp\FlightShield\Authentication\Authenticators\Session;
 use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Models\UserIdentity;
+use Enlivenapp\FlightShield\Services\ResendCooldown;
 use Enlivenapp\FlightShield\Support\RobotDetector;
 use flight\Engine;
 
@@ -58,21 +59,16 @@ class Email2FA implements ActionInterface
             throw new \RuntimeException('Cannot get the pending login user.');
         }
 
-        // Server-side cooldown: reject resend if last code was created < 300 seconds ago
-        $identityModel = new UserIdentity(\Flight::db());
-        $existing = $identityModel->getIdentityByType($user, $this->type);
+        // Server-side cooldown: reject a resend while the last code is still
+        // inside the configured window.
+        $config = $app->get('enlivenapp.flight-shield') ?? [];
+        $cooldown = new ResendCooldown($config);
+        $remaining = $cooldown->remaining($user, $this->type);
 
-        if ($existing !== null && $existing->created_at !== null) {
-            $createdAt = new \DateTimeImmutable($existing->created_at);
-            $elapsed = time() - $createdAt->getTimestamp();
-            if ($elapsed < 300) {
-                $remaining = 300 - $elapsed;
-                $m = intdiv($remaining, 60);
-                $s = $remaining % 60;
-                return $app->view()->fetch('2fa_verify', [
-                    'error' => "Please wait {$m}:" . str_pad((string) $s, 2, '0', STR_PAD_LEFT) . ' before requesting a new code.',
-                ]);
-            }
+        if ($remaining > 0) {
+            return $app->view()->fetch('2fa_verify', [
+                'error' => 'Please wait ' . $cooldown->format($remaining) . ' before requesting a new code.',
+            ]);
         }
 
         $code = $this->createIdentity($user, $app);
@@ -97,7 +93,6 @@ class Email2FA implements ActionInterface
             throw new \RuntimeException('Cannot get the pending login user.');
         }
 
-        /** @var UserIdentityRepository $identityRepo */
         $identityModel = new UserIdentity(\Flight::db());
         $identity = $identityModel->getIdentityByType($user, $this->type);
 
@@ -130,6 +125,9 @@ class Email2FA implements ActionInterface
         return $this->type;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     protected function getBotDetectionConfig(Engine $app): array
     {
         return $app->get('enlivenapp.flight-shield')['bot_detection'] ?? [];
@@ -144,7 +142,6 @@ class Email2FA implements ActionInterface
             throw new \RuntimeException('Shield email_sender callback is not configured.');
         }
 
-        /** @var UserIdentityRepository $identityRepo */
         $identityModel = new UserIdentity(\Flight::db());
         $identity = $identityModel->getEmailIdentity($user);
         $to = $identity ? $identity->secret : '';
@@ -161,7 +158,6 @@ class Email2FA implements ActionInterface
 
     public function createIdentity(User $user, Engine $app): string
     {
-        /** @var UserIdentityRepository $identityRepo */
         $identityModel = new UserIdentity(\Flight::db());
 
         $identityModel->deleteIdentitiesByType($user, $this->type);

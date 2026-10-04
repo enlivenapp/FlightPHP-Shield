@@ -24,16 +24,23 @@ class AccessTokens implements AuthenticatorInterface
     public const ID_TYPE_ACCESS_TOKEN = 'access_token';
 
     protected Engine $app;
+    /** @var array<string, mixed> */
     protected array $config;
     protected ?User $user = null;
     protected bool $tokenChecked = false;
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(Engine $app, array $config)
     {
         $this->app = $app;
         $this->config = $config;
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function attempt(array $credentials): Result
     {
         $result = $this->check($credentials);
@@ -60,6 +67,9 @@ class AccessTokens implements AuthenticatorInterface
         return $result;
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function check(array $credentials): Result
     {
         if (! isset($credentials['token']) || $credentials['token'] === '') {
@@ -93,7 +103,11 @@ class AccessTokens implements AuthenticatorInterface
         $unusedLifetime = $this->config['unused_token_lifetime'] ?? null;
         if ($unusedLifetime && $identity->last_used_at) {
             $cutoff = new \DateTimeImmutable("-{$unusedLifetime} seconds");
-            if ($identity->last_used_at < $cutoff) {
+            // Compare timestamps: last_used_at is a date string, and PHP
+            // compares a string against a DateTimeImmutable by casting the
+            // string to the object's type, which lands on the object's
+            // microsecond-precision date property.
+            if (strtotime((string) $identity->last_used_at) < $cutoff->getTimestamp()) {
                 return (new Result())
                     ->setSuccess(false)
                     ->setReason('Token has expired from disuse.');

@@ -27,20 +27,10 @@ class PwnedValidator extends BaseValidator implements ValidatorInterface
         $rangeHash  = substr($hashedPassword, 0, 5);
         $searchHash = substr($hashedPassword, 5);
 
-        $ch = curl_init($this->buildEndpointUrl($rangeHash));
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER     => ['Accept: text/plain'],
-            CURLOPT_TIMEOUT        => 10,
-            CURLOPT_CONNECTTIMEOUT => 5,
-        ]);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $response = $this->fetchRange($rangeHash);
 
         // If the API is unreachable, let the password through
-        if ($response === false || $httpCode !== 200) {
+        if ($response === null) {
             return (new Result())->setSuccess(true);
         }
 
@@ -61,6 +51,32 @@ class PwnedValidator extends BaseValidator implements ValidatorInterface
             ->setSuccess(false)
             ->setReason("This password has appeared in {$hits} data breaches found in {$wording}.")
             ->setExtraInfo('Choose a password that has not been exposed in a data breach.');
+    }
+
+    /**
+     * Fetch the k-anonymity range body, or null when the API is
+     * unreachable. Split out so the response parsing can be tested
+     * without a network call.
+     */
+    protected function fetchRange(string $rangeHash): ?string
+    {
+        $ch = curl_init($this->buildEndpointUrl($rangeHash));
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => ['Accept: text/plain'],
+            CURLOPT_TIMEOUT        => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if (! is_string($response) || $httpCode !== 200) {
+            return null;
+        }
+
+        return $response;
     }
 
     /**

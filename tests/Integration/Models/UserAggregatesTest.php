@@ -182,6 +182,34 @@ class UserAggregatesTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // countNewByMonth - skipped (DATE_FORMAT is MySQL-only, tests use SQLite)
+    // countNewByMonth
     // -----------------------------------------------------------------
+
+    #[Test]
+    public function countNewByMonthBucketsRegistrationsByMonth(): void
+    {
+        $u1 = TestHelper::createUser($this->pdo, 'a@test.com', 'pass1234', 'a', true);
+        $u2 = TestHelper::createUser($this->pdo, 'b@test.com', 'pass1234', 'b', true);
+
+        $this->pdo->prepare('UPDATE users SET created_at = ? WHERE id = ?')
+            ->execute(['2026-04-15 10:00:00', $u1->id]);
+        $this->pdo->prepare('UPDATE users SET created_at = ? WHERE id = ?')
+            ->execute(['2026-05-02 10:00:00', $u2->id]);
+
+        $result = $this->model->countNewByMonth(24);
+
+        $this->assertSame(1, $result['2026-04']);
+        $this->assertSame(1, $result['2026-05']);
+    }
+
+    #[Test]
+    public function countNewByMonthExcludesSoftDeletedUsers(): void
+    {
+        $user = TestHelper::createUser($this->pdo, 'a@test.com', 'pass1234', 'a', true);
+
+        $this->pdo->prepare('UPDATE users SET deleted_at = ? WHERE id = ?')
+            ->execute([date('Y-m-d H:i:s'), $user->id]);
+
+        $this->assertSame([], $this->model->countNewByMonth(24));
+    }
 }

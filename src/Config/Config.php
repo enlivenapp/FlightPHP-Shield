@@ -106,6 +106,9 @@ return [
     'allow_magic_link'    => false,
     'magic_link_lifetime' => 3600, // 1 hour
 
+    // Seconds between resend emails for one account (activation and 2FA)
+    'resend_cooldown' => 300,
+
     // Email callback - shield calls this to send emails
     // function(string $to, string $subject, string $body): void
     'email_sender' => null,
@@ -149,5 +152,6 @@ return [
         'force_reset'       => '/auth/reset-password',
         'permission_denied' => '/auth/login',
         'group_denied'      => '/auth/login',
+        'activate'          => '/auth/activate',
     ],
 ];

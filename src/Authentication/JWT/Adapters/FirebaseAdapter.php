@@ -23,8 +23,12 @@ use stdClass;
  */
 class FirebaseAdapter implements JWSAdapterInterface
 {
+    /** @var array<string, mixed> */
     protected array $keys;
 
+    /**
+     * @param array<string, mixed> $keys
+     */
     public function __construct(array $keys)
     {
         $this->keys = $keys;
@@ -39,7 +43,7 @@ class FirebaseAdapter implements JWSAdapterInterface
         }
 
         $configKeys = $this->keys[$keyset] ?? null;
-        if ($configKeys === null) {
+        if (! is_array($configKeys)) {
             throw new \InvalidArgumentException("Unknown JWT keyset: {$keyset}");
         }
 
@@ -54,6 +58,11 @@ class FirebaseAdapter implements JWSAdapterInterface
             throw new AuthenticationException('Invalid or expired token.');
         } catch (\UnexpectedValueException $e) {
             throw AuthenticationException::forInvalidCredentials();
+        } catch (\Throwable $e) {
+            // Anything else the parser throws on a malformed token (a
+            // DomainException on invalid encoding, for example) is still a
+            // credential failure, not a server error.
+            throw AuthenticationException::forInvalidCredentials();
         }
     }
 
@@ -66,7 +75,7 @@ class FirebaseAdapter implements JWSAdapterInterface
         }
 
         $configKeys = $this->keys[$keyset] ?? null;
-        if ($configKeys === null) {
+        if (! is_array($configKeys)) {
             throw new \InvalidArgumentException("Unknown JWT keyset: {$keyset}");
         }
 
@@ -75,43 +84,65 @@ class FirebaseAdapter implements JWSAdapterInterface
         return \Firebase\JWT\JWT::encode($payload, $key, $algorithm, $keyId, $headers);
     }
 
+    /**
+     * @param array<array-key, mixed> $configKeys
+     *
+     * @return array<string, \Firebase\JWT\Key>|\Firebase\JWT\Key
+     */
     protected function createKeysForDecode(array $configKeys): array|\Firebase\JWT\Key
     {
-        if (count($configKeys) === 1) {
-            $key       = $configKeys[0]['secret'] ?? $configKeys[0]['public'];
-            $algorithm = $configKeys[0]['alg'];
+        if (count($configKeys) === 1 && is_array($configKeys[0] ?? null)) {
+            $item      = $configKeys[0];
+            $key       = (string) ($item['secret'] ?? $item['public'] ?? '');
+            $algorithm = (string) ($item['alg'] ?? '');
+
             return new \Firebase\JWT\Key($key, $algorithm);
         }
 
+        /** @var array<string, \Firebase\JWT\Key> $keys */
         $keys = [];
         foreach ($configKeys as $item) {
-            $key       = $item['secret'] ?? $item['public'];
-            $algorithm = $item['alg'];
-            $keys[$item['kid']] = new \Firebase\JWT\Key($key, $algorithm);
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $key       = (string) ($item['secret'] ?? $item['public'] ?? '');
+            $algorithm = (string) ($item['alg'] ?? '');
+            $keys[(string) ($item['kid'] ?? '')] = new \Firebase\JWT\Key($key, $algorithm);
         }
 
         return $keys;
     }
 
+    /**
+     * @param array<array-key, mixed> $configKeys
+     *
+     * @return array{0: mixed, 1: string|null, 2: string}
+     */
     protected function createKeysForEncode(array $configKeys): array
     {
-        if (isset($configKeys[0]['secret'])) {
-            $key = $configKeys[0]['secret'];
+        $first = $configKeys[0] ?? null;
+        if (! is_array($first)) {
+            throw new \InvalidArgumentException('JWT keyset is missing a key configuration.');
+        }
+
+        if (isset($first['secret'])) {
+            $key = $first['secret'];
         } else {
-            $passphrase = $configKeys[0]['passphrase'] ?? '';
+            $passphrase = (string) ($first['passphrase'] ?? '');
             if ($passphrase !== '') {
-                $key = openssl_pkey_get_private($configKeys[0]['private'], $passphrase);
+                $key = openssl_pkey_get_private((string) ($first['private'] ?? ''), $passphrase);
             } else {
-                $key = $configKeys[0]['private'];
+                $key = $first['private'] ?? '';
             }
         }
 
-        $algorithm = $configKeys[0]['alg'];
-        $keyId = $configKeys[0]['kid'] ?? null;
+        $algorithm = (string) ($first['alg'] ?? '');
+        $keyId = $first['kid'] ?? null;
         if ($keyId === '') {
             $keyId = null;
         }
 
-        return [$key, $keyId, $algorithm];
+        return [$key, is_string($keyId) ? $keyId : null, $algorithm];
     }
 }

@@ -21,12 +21,13 @@ use flight\Engine;
 class GroupMiddleware
 {
     protected Engine $app;
+    /** @var list<string> */
     protected array $groups;
 
     public function __construct(Engine $app, string ...$groups)
     {
         $this->app = $app;
-        $this->groups = $groups;
+        $this->groups = array_values($groups);
     }
 
     public function before(): void
@@ -37,10 +38,17 @@ class GroupMiddleware
             $config = $this->app->get('enlivenapp.flight-shield') ?? [];
             $this->app->redirect($config['redirects']['login'] ?? '/auth/login');
             $this->app->halt(303);
+            return;
         }
 
         $user = $auth->user();
         $config = $this->app->get('enlivenapp.flight-shield') ?? [];
+
+        if ($user === null) {
+            $this->app->redirect($config['redirects']['login'] ?? '/auth/login');
+            $this->app->halt(303);
+            return;
+        }
 
         if (! $user->inGroup(...$this->groups)) {
             $this->app->redirect($config['redirects']['group_denied'] ?? '/auth/login');

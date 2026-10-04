@@ -14,8 +14,12 @@ class BaseValidator
 {
     protected ?string $error = null;
     protected ?string $suggestion = null;
+    /** @var array<string, mixed> */
     protected array $config;
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(array $config)
     {
         $this->config = $config;

@@ -17,6 +17,7 @@ use Enlivenapp\FlightShield\Authorization\Groups;
 use Enlivenapp\FlightShield\Authorization\Permissions;
 use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Models\UserIdentity;
+use Enlivenapp\FlightShield\Services\CredentialVerifier;
 use Enlivenapp\FlightShield\Services\UserManagement;
 use Enlivenapp\FlightShield\Services\UserStats;
 use Enlivenapp\FlightShield\Validation\ValidationRules;
@@ -36,21 +37,33 @@ use flight\Engine;
  */
 class Auth
 {
+    // verifyCredentials() failure reasons. One sentence per outcome; the
+    // caller tells them apart by reading reason().
+    public const CREDENTIALS_INVALID   = 'Invalid credentials.';
+    public const ACCOUNT_BANNED        = 'This account has been banned.';
+    public const ACCOUNT_NOT_ACTIVATED = 'This account is not activated. A new activation email has been sent.';
+
     protected Authentication $authentication;
     protected ?AuthenticatorInterface $authenticator = null;
     protected Engine $app;
+    /** @var array<string, mixed> */
     protected array $config;
+    protected CredentialVerifier $credentialVerifier;
 
     protected ?UserManagement $usersService = null;
     protected ?Groups $groupsService = null;
     protected ?Permissions $permissionsService = null;
     protected ?UserStats $statsService = null;
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(Engine $app, array $config)
     {
         $this->app = $app;
         $this->config = $config;
         $this->authentication = new Authentication($app, $config);
+        $this->credentialVerifier = new CredentialVerifier($app, $config);
     }
 
     public function setAuthenticator(?string $alias = null): static
@@ -82,11 +95,17 @@ class Auth
     // Delegate to active authenticator
     // -----------------------------------------------------------------
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function attempt(array $credentials): Result
     {
         return $this->getAuthenticator()->attempt($credentials);
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function check(array $credentials): Result
     {
         return $this->getAuthenticator()->check($credentials);
@@ -135,6 +154,9 @@ class Auth
      * reports success without revealing whether the account exists, except
      * for an address belonging to a soft-deleted account, which is refused.
      */
+    /**
+     * @param array<string, mixed> $fields
+     */
     public function register(array $fields): Result
     {
         $errors = (new ValidationRules($this->config['passwords'] ?? []))
@@ -176,7 +198,7 @@ class Auth
             /** @var User $user */
             $user = $result->extraInfo();
 
-            if (! $this->trySendActivation($user)) {
+            if (! $this->credentialVerifier->sendActivation($user)) {
                 return (new Result())
                     ->setSuccess(false)
                     ->setReason('We could not send the activation email. Please try again.')
@@ -221,27 +243,13 @@ class Auth
         }
 
         if ($this->requiresEmailActivation() && $user !== null && $user->isNotActivated()) {
-            $this->trySendActivation($user);
+            $this->credentialVerifier->sendActivation($user);
             return (new Result())->setSuccess(true);
         }
 
         $this->sendRegistrationAttemptNotice($email);
 
         return (new Result())->setSuccess(true);
-    }
-
-    /**
-     * Send the activation link, turning a mail failure into a return value
-     * rather than a server error.
-     */
-    protected function trySendActivation(User $user): bool
-    {
-        try {
-            (new EmailActivator())->begin($user, $this->app);
-            return true;
-        } catch (\Throwable $e) {
-            return false;
-        }
     }
 
     /**
@@ -267,6 +275,93 @@ class Auth
         } catch (\Throwable $e) {
             // Swallowed on purpose.
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Credential verification (no session, no login)
+    // -----------------------------------------------------------------
+
+    /**
+     * Verify an email/password pair without logging anyone in.
+     *
+     * Built for other plugins - a store, a checkout, an API - that need to
+     * confirm who is at the keyboard before doing their own thing. No
+     * session state is written and no login is started.
+     *
+     * Checks run in this order, and the first one that applies wins:
+     *
+     *   1. wrong email or password   -> failure, reason CREDENTIALS_INVALID
+     *   2. banned account            -> failure, reason ACCOUNT_BANNED
+     *   3. not activated             -> failure, reason ACCOUNT_NOT_ACTIVATED;
+     *                                   a fresh activation email is sent
+     *   4. valid, active, not banned -> success, user() is the User
+     *
+     * Failure: reason() names the outcome, user() is null. Success: user()
+     * holds the User, reason() is null.
+     */
+    /**
+     * @param array<string, mixed> $credentials
+     */
+    public function verifyCredentials(array $credentials): Result
+    {
+        $email    = trim((string) ($credentials['email'] ?? ''));
+        $password = (string) ($credentials['password'] ?? '');
+
+        $user = (new User($this->app->db()))->findByCredentials(['email' => $email]);
+
+        if ($user === null) {
+            // Burn the same time as a real check, so an unknown email cannot
+            // be told apart from a wrong password by how long the answer took.
+            $this->credentialVerifier->burnTiming($password);
+
+            return $this->credentialFailure($email, self::CREDENTIALS_INVALID);
+        }
+
+        if ($password === '' || ! $this->credentialVerifier->passwordMatches($user, $password)) {
+            return $this->credentialFailure($email, self::CREDENTIALS_INVALID);
+        }
+
+        if ($user->isBanned()) {
+            return $this->credentialFailure(
+                $email,
+                $user->getBanMessage() ?? self::ACCOUNT_BANNED,
+                $user->id
+            );
+        }
+
+        if (! $user->isActivated()) {
+            $this->credentialVerifier->sendActivation($user);
+
+            return $this->credentialFailure($email, self::ACCOUNT_NOT_ACTIVATED, $user->id);
+        }
+
+        $this->credentialVerifier->recordAttempt(
+            $email,
+            UserIdentity::TYPE_EMAIL_PASSWORD,
+            true,
+            $user->id
+        );
+
+        return (new Result())
+            ->setSuccess(true)
+            ->setUser($user);
+    }
+
+    /**
+     * Build a failed verification Result and record the attempt.
+     */
+    protected function credentialFailure(string $email, string $reason, ?int $userId = null): Result
+    {
+        $this->credentialVerifier->recordAttempt(
+            $email,
+            UserIdentity::TYPE_EMAIL_PASSWORD,
+            false,
+            $userId
+        );
+
+        return (new Result())
+            ->setSuccess(false)
+            ->setReason($reason);
     }
 
     // -----------------------------------------------------------------

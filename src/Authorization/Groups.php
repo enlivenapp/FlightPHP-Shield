@@ -19,9 +19,9 @@ use Enlivenapp\FlightShield\Models\GroupUser;
  */
 class Groups
 {
-    protected $pdo;
+    protected mixed $pdo;
 
-    public function __construct($pdo)
+    public function __construct(mixed $pdo)
     {
         $this->pdo = $pdo;
     }
@@ -31,6 +31,7 @@ class Groups
      */
     public function info(string $group): ?AuthGroup
     {
+        /** @var AuthGroup $record */
         $record = (new AuthGroup($this->pdo))
             ->eq('alias', strtolower($group))
             ->find();
@@ -43,6 +44,7 @@ class Groups
      */
     public function findById(int $id): ?AuthGroup
     {
+        /** @var AuthGroup $record */
         $record = (new AuthGroup($this->pdo))
             ->eq('id', $id)
             ->find();
@@ -71,9 +73,12 @@ class Groups
      */
     public function all(): array
     {
-        return (new AuthGroup($this->pdo))
+        /** @var array<int, AuthGroup> $groups */
+        $groups = (new AuthGroup($this->pdo))
             ->order('alias ASC')
             ->findAll();
+
+        return $groups;
     }
 
     /**
@@ -124,6 +129,7 @@ class Groups
         // --- 1. Handle user memberships ---
 
         // Collect all membership records for this group
+        /** @var array<int, GroupUser> $memberships */
         $memberships = (new GroupUser($this->pdo))
             ->eq('group_alias', $alias)
             ->findAll();
@@ -175,6 +181,7 @@ class Groups
      */
     public function permissions(string $alias): array
     {
+        /** @var array<int, AuthGroupPermission> $records */
         $records = (new AuthGroupPermission($this->pdo))
             ->eq('group_alias', $alias)
             ->findAll();
@@ -229,6 +236,9 @@ class Groups
      * Existing mappings not in the list are removed; missing ones are added.
      * Unknown aliases (not present in auth_permissions) are skipped so a
      * stale form submission cannot create orphan mappings.
+     */
+    /**
+     * @param list<string> $permissionAliases
      */
     public function syncPermissions(string $groupAlias, array $permissionAliases): void
     {

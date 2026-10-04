@@ -43,6 +43,21 @@
             color: #2d6a2d; padding: 1rem; font-size: 0.875rem;
             text-align: center;
         }
+        .shield-field { margin-bottom: 1.25rem; }
+        .shield-field label { display: block; font-size: 0.875rem; font-weight: 600; color: #333; margin-bottom: 0.375rem; }
+        .shield-field input[type="email"] {
+            width: 100%; padding: 0.75rem 1rem; border: 1px solid #ddd;
+            border-radius: 6px; font-size: 1rem; transition: border-color 0.2s; outline: none;
+        }
+        .shield-field input:focus { border-color: #0f3460; box-shadow: 0 0 0 3px rgba(15,52,96,0.1); }
+        .shield-btn {
+            width: 100%; padding: 0.75rem;
+            background: linear-gradient(135deg, #0f3460, #1a1a2e);
+            color: #fff; border: none; border-radius: 6px;
+            font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s;
+        }
+        .shield-btn:hover { opacity: 0.9; }
+        .shield-btn:disabled { background: #aaa; cursor: default; }
         .shield-links { margin-top: 1.5rem; text-align: center; font-size: 0.875rem; }
         .shield-links a { color: #0f3460; text-decoration: none; }
         .shield-links a:hover { text-decoration: underline; }
@@ -60,13 +75,52 @@
             <div class="shield-error"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
-        <div class="shield-message">
-            We've sent an activation link to your email address. Please check your inbox and click the link to activate your account.
-        </div>
+        <?php if (!empty($message)): ?>
+            <div class="shield-message"><?= htmlspecialchars($message) ?></div>
+        <?php endif; ?>
+
+        <form method="post" action="/auth/activate/resend">
+            <?= csrf_field() ?>
+
+            <div class="shield-field">
+                <label for="email">Email address</label>
+                <input type="email" id="email" name="email" required
+                       value="<?= htmlspecialchars($old['email'] ?? '') ?>">
+            </div>
+
+            <button type="submit" class="shield-btn" id="resendBtn">Resend validation email</button>
+        </form>
 
         <div class="shield-links">
             <p><a href="/auth/login">Back to sign in</a></p>
         </div>
     </div>
+
+    <?php $cooldown = (int) ($cooldown ?? 0); ?>
+    <?php if ($cooldown > 0): ?>
+    <script>
+        (function() {
+            var seconds = <?= $cooldown ?>;
+            var btn = document.getElementById('resendBtn');
+            var label = function(s) {
+                var m = Math.floor(s / 60);
+                var sec = s % 60;
+                return 'Resend validation email (' + m + ':' + (sec < 10 ? '0' : '') + sec + ')';
+            };
+            btn.disabled = true;
+            btn.textContent = label(seconds);
+            var timer = setInterval(function() {
+                seconds--;
+                if (seconds <= 0) {
+                    clearInterval(timer);
+                    btn.disabled = false;
+                    btn.textContent = 'Resend validation email';
+                    return;
+                }
+                btn.textContent = label(seconds);
+            }, 1000);
+        })();
+    </script>
+    <?php endif; ?>
 </body>
 </html>

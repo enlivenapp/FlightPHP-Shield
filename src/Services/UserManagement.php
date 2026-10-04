@@ -33,14 +33,63 @@ class UserManagement
     private const USERNAME_MIN_LENGTH = 3;
 
     protected \PDO $pdo;
+    /** @var array<string, mixed> */
     protected array $config;
     protected Passwords $passwords;
+    private bool $ownsTransaction = false;
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(\PDO $pdo, array $config = [])
     {
         $this->pdo = $pdo;
         $this->config = $config;
         $this->passwords = new Passwords($config['passwords'] ?? []);
+    }
+
+    /**
+     * PDO::inTransaction() is a getter whose value changes as a transaction
+     * is begun, committed, or rolled back. Marking this wrapper impure stops
+     * PHPStan folding every call to the first result.
+     *
+     * @phpstan-impure
+     */
+    private function hasActiveTransaction(): bool
+    {
+        return $this->pdo->inTransaction();
+    }
+
+    /**
+     * Begin a transaction unless one is already active. Returns true when
+     * this call owns the transaction it started, so the caller knows whether
+     * it may roll back.
+     *
+     * @phpstan-impure
+     */
+    private function beginTransactionIfNeeded(): bool
+    {
+        if ($this->hasActiveTransaction()) {
+            return false;
+        }
+
+        $this->pdo->beginTransaction();
+
+        return true;
+    }
+
+    /**
+     * Roll back the transaction when this call started it and it is still
+     * active. Taking the flag as a parameter keeps PHPStan from treating it
+     * as a constant.
+     *
+     * @phpstan-impure
+     */
+    private function rollBackIfOwned(bool $owns): void
+    {
+        if ($owns && $this->hasActiveTransaction()) {
+            $this->pdo->rollBack();
+        }
     }
 
     // -----------------------------------------------------------------
@@ -165,11 +214,7 @@ class UserManagement
         // A derived username can still lose a race with a concurrent signup,
         // so retry it with a suffix. An explicit username gets a plain error.
         for ($attempt = 0; $attempt < 5; $attempt++) {
-            $ownsTransaction = ! $this->pdo->inTransaction();
-
-            if ($ownsTransaction) {
-                $this->pdo->beginTransaction();
-            }
+            $this->ownsTransaction = $this->beginTransactionIfNeeded();
 
             try {
                 $user = new User($this->pdo);
@@ -186,7 +231,7 @@ class UserManagement
 
                 $user->addGroup($groupAlias);
 
-                if ($ownsTransaction) {
+                if ($this->ownsTransaction) {
                     $this->pdo->commit();
                 }
 
@@ -194,9 +239,7 @@ class UserManagement
                     ->setSuccess(true)
                     ->setExtraInfo($user);
             } catch (\Exception $e) {
-                if ($ownsTransaction && $this->pdo->inTransaction()) {
-                    $this->pdo->rollBack();
-                }
+                $this->rollBackIfOwned($this->ownsTransaction);
 
                 if (! $derived) {
                     return $this->fail('Username is already in use.');
@@ -225,6 +268,9 @@ class UserManagement
      * typed properties do not register in ActiveRecord's dirty tracker.
      *
      * Accepted $data keys: 'username', 'email', 'password'.
+     */
+    /**
+     * @param array<string, mixed> $data
      */
     public function updateProfile(User $user, array $data): Result
     {
@@ -343,11 +389,7 @@ class UserManagement
      */
     protected function saveProfile(User $user, ?UserIdentity $identity): Result
     {
-        $ownsTransaction = ! $this->pdo->inTransaction();
-
-        if ($ownsTransaction) {
-            $this->pdo->beginTransaction();
-        }
+        $this->ownsTransaction = $this->beginTransactionIfNeeded();
 
         try {
             $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
@@ -360,13 +402,11 @@ class UserManagement
             $user->updated_at = $now;
             $user->save();
 
-            if ($ownsTransaction) {
+            if ($this->ownsTransaction) {
                 $this->pdo->commit();
             }
         } catch (\Exception $e) {
-            if ($ownsTransaction && $this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
+            $this->rollBackIfOwned($this->ownsTransaction);
 
             return $this->fail('The profile could not be saved. Please try again.');
         }

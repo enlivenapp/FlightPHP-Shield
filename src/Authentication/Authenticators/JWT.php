@@ -28,6 +28,7 @@ class JWT implements AuthenticatorInterface
     public const ID_TYPE_JWT = 'jwt';
 
     protected Engine $app;
+    /** @var array<string, mixed> */
     protected array $config;
     protected ?User $user = null;
     protected bool $tokenChecked = false;
@@ -35,12 +36,18 @@ class JWT implements AuthenticatorInterface
     protected ?stdClass $payload = null;
     protected string $keyset = 'default';
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(Engine $app, array $config)
     {
         $this->app = $app;
         $this->config = $config;
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function attempt(array $credentials): Result
     {
         $result = $this->check($credentials);
@@ -76,6 +83,9 @@ class JWT implements AuthenticatorInterface
         return $result;
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function check(array $credentials): Result
     {
         if (! isset($credentials['token']) || $credentials['token'] === '') {
@@ -100,7 +110,6 @@ class JWT implements AuthenticatorInterface
                 ->setReason('Invalid JWT: missing subject.');
         }
 
-        /** @var UserRepository $userRepo */
         $userModel = new User(\Flight::db());
         $user = $userModel->findById($userId);
 
@@ -196,6 +205,9 @@ class JWT implements AuthenticatorInterface
 
     /**
      * Generate a JWT for the given user.
+     */
+    /**
+     * @param array<string, mixed> $claims
      */
     public function generateToken(User $user, array $claims = [], ?int $ttl = null): string
     {

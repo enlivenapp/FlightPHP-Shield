@@ -21,18 +21,28 @@ use Enlivenapp\FlightShield\Exceptions\SecurityException;
  */
 class HmacEncrypter
 {
+    /** @var array<string, string> */
     protected array $keys;
     protected string $currentKey;
     protected string $cipher = 'aes-256-gcm';
     protected int $storageLimitBytes;
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(array $config)
     {
         $hmac = $config['hmac'] ?? [];
-        $this->keys = $hmac['encryption_keys'] ?? [];
-        $this->currentKey = $hmac['encryption_current_key'] ?? '';
-        $this->cipher = $hmac['encryption_cipher'] ?? 'aes-256-gcm';
-        $this->storageLimitBytes = $hmac['secret2_storage_limit'] ?? 255;
+        if (! is_array($hmac)) {
+            $hmac = [];
+        }
+
+        /** @var array<string, string> $keys */
+        $keys = $hmac['encryption_keys'] ?? [];
+        $this->keys = $keys;
+        $this->currentKey = (string) ($hmac['encryption_current_key'] ?? '');
+        $this->cipher = (string) ($hmac['encryption_cipher'] ?? 'aes-256-gcm');
+        $this->storageLimitBytes = (int) ($hmac['secret2_storage_limit'] ?? 255);
 
         if (empty($this->currentKey) || ! isset($this->keys[$this->currentKey])) {
             throw new RuntimeException('HMAC encryption key not configured.');
@@ -100,6 +110,10 @@ class HmacEncrypter
 
     public function generateSecretKey(int $bytes = 32): string
     {
+        if ($bytes < 1) {
+            throw new RuntimeException('Key length must be at least 1 byte.');
+        }
+
         return base64_encode(random_bytes($bytes));
     }
 

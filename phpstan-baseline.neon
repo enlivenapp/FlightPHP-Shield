@@ -1,0 +1,235 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:db\(\)\.$#'
+			identifier: method.notFound
+			count: 7
+			path: src/Auth.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 4
+			path: src/Authentication/Actions/Email2FA.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:session\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Authentication/Actions/Email2FA.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 4
+			path: src/Authentication/Actions/Email2FA.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Authentication/Actions/EmailActivator.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 4
+			path: src/Authentication/Actions/EmailActivator.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 4
+			path: src/Authentication/Authenticators/AccessTokens.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 4
+			path: src/Authentication/Authenticators/HmacSha256.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 3
+			path: src/Authentication/Authenticators/JWT.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:db\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Authentication/Authenticators/Session.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:session\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Authentication/Authenticators/Session.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 4
+			path: src/Authentication/Authenticators/Session.php
+
+		-
+			message: '#^Call to an undefined method Enlivenapp\\FlightShield\\Models\\AuthGroup\:\:order\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Authorization/Groups.php
+
+		-
+			message: '#^Call to an undefined method Enlivenapp\\FlightShield\\Models\\AuthPermission\:\:order\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Authorization/Permissions.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:db\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Controllers/ActivationController.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 4
+			path: src/Controllers/LoginController.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Controllers/MagicLinkController.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 6
+			path: src/Controllers/MagicLinkController.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Controllers/RegisterController.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:auth\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: src/Helpers/auth_helper.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 3
+			path: src/Middlewares/ChainAuthMiddleware.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Middlewares/ForcePasswordResetMiddleware.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Middlewares/GroupMiddleware.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Middlewares/HmacAuthMiddleware.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Middlewares/JWTAuthMiddleware.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Middlewares/PermissionMiddleware.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: src/Middlewares/RateLimitMiddleware.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Middlewares/SessionAuthMiddleware.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:auth\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Middlewares/TokenAuthMiddleware.php
+
+		-
+			message: '#^Call to an undefined method Enlivenapp\\FlightShield\\Models\\GroupUser\:\:select\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Models/GroupUser.php
+
+		-
+			message: '#^Call to an undefined method Enlivenapp\\FlightShield\\Models\\Login\:\:select\(\)\.$#'
+			identifier: method.notFound
+			count: 6
+			path: src/Models/Login.php
+
+		-
+			message: '#^Call to an undefined method Enlivenapp\\FlightShield\\Models\\TokenLogin\:\:select\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Models/TokenLogin.php
+
+		-
+			message: '#^Call to an undefined method Enlivenapp\\FlightShield\\Models\\User\:\:select\(\)\.$#'
+			identifier: method.notFound
+			count: 7
+			path: src/Models/User.php
+
+		-
+			message: '#^Call to an undefined method flight\\ActiveRecord\:\:inGroup\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Models/User.php
+
+		-
+			message: '#^Call to an undefined method flight\\ActiveRecord\:\:order\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Models/User.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 14
+			path: src/Models/User.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: src/Passwords/NothingPersonalValidator.php
+
+		-
+			message: '#^Call to an undefined method flight\\Engine\:\:db\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Services/CredentialVerifier.php
+
+		-
+			message: '#^Call to an undefined static method Flight\:\:db\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: src/Services/ResendCooldown.php

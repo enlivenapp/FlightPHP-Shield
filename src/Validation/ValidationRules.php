@@ -17,8 +17,12 @@ use Enlivenapp\FlightShield\Passwords\Passwords;
  */
 class ValidationRules
 {
+    /** @var array<string, mixed> */
     protected array $config;
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(array $config = [])
     {
         $this->config = $config;
@@ -26,6 +30,8 @@ class ValidationRules
 
     /**
      * Returns validation rules for registration.
+     *
+     * @return array<string, mixed>
      */
     public function getRegistrationRules(): array
     {
@@ -48,6 +54,8 @@ class ValidationRules
 
     /**
      * Returns validation rules for login.
+     *
+     * @return array<string, mixed>
      */
     public function getLoginRules(): array
     {
@@ -65,6 +73,8 @@ class ValidationRules
 
     /**
      * Returns validation rules for the password field.
+     *
+     * @return array<string, mixed>
      */
     public function getPasswordRules(): array
     {
@@ -76,6 +86,8 @@ class ValidationRules
 
     /**
      * Returns validation rules for the password confirmation field.
+     *
+     * @return array<string, mixed>
      */
     public function getPasswordConfirmRules(): array
     {
@@ -87,6 +99,11 @@ class ValidationRules
 
     /**
      * Validate data against a rule set. Returns array of errors (empty = valid).
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $rules
+     *
+     * @return array<string, string>
      */
     public function validate(array $data, array $rules): array
     {

@@ -63,7 +63,7 @@ class EmailActivator
             $identity->delete();
             return (new Result())
                 ->setSuccess(false)
-                ->setReason('The activation token has expired. Please register again.');
+                ->setReason('The activation token has expired.');
         }
 
         $user = (new User(\Flight::db()))->findById($identity->user_id);
@@ -146,6 +146,9 @@ class EmailActivator
         return $this->type;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     protected function getBotDetectionConfig(Engine $app): array
     {
         return $app->get('enlivenapp.flight-shield')['bot_detection'] ?? [];
@@ -160,7 +163,6 @@ class EmailActivator
             throw new \RuntimeException('Shield email_sender callback is not configured.');
         }
 
-        /** @var UserIdentityRepository $identityRepo */
         $identityModel = new UserIdentity(\Flight::db());
         $identity = $identityModel->getEmailIdentity($user);
         $to = $identity ? $identity->secret : '';

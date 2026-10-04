@@ -10,6 +10,8 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield;
 
+use Enlivenapp\FlightShield\Models\User;
+
 /**
  * Represents the outcome of an authentication or authorization check.
  */
@@ -18,6 +20,7 @@ class Result
     protected bool $success = false;
     protected ?string $reason = null;
     protected mixed $extraInfo = null;
+    protected ?User $user = null;
 
     public function isOK(): bool
     {
@@ -32,6 +35,11 @@ class Result
     public function extraInfo(): mixed
     {
         return $this->extraInfo;
+    }
+
+    public function user(): ?User
+    {
+        return $this->user;
     }
 
     public function setSuccess(bool $success): static
@@ -49,6 +57,12 @@ class Result
     public function setExtraInfo(mixed $extraInfo): static
     {
         $this->extraInfo = $extraInfo;
+        return $this;
+    }
+
+    public function setUser(?User $user): static
+    {
+        $this->user = $user;
         return $this;
     }
 }

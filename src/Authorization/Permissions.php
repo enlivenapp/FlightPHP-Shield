@@ -19,9 +19,9 @@ use Enlivenapp\FlightShield\Models\PermissionUser;
  */
 class Permissions
 {
-    protected $pdo;
+    protected mixed $pdo;
 
-    public function __construct($pdo)
+    public function __construct(mixed $pdo)
     {
         $this->pdo = $pdo;
     }
@@ -33,9 +33,12 @@ class Permissions
      */
     public function all(): array
     {
-        return (new AuthPermission($this->pdo))
+        /** @var array<int, AuthPermission> $permissions */
+        $permissions = (new AuthPermission($this->pdo))
             ->order('alias ASC')
             ->findAll();
+
+        return $permissions;
     }
 
     /**
@@ -43,6 +46,7 @@ class Permissions
      */
     public function info(string $alias): ?AuthPermission
     {
+        /** @var AuthPermission $record */
         $record = (new AuthPermission($this->pdo))
             ->eq('alias', strtolower($alias))
             ->find();
@@ -55,6 +59,7 @@ class Permissions
      */
     public function findById(int $id): ?AuthPermission
     {
+        /** @var AuthPermission $record */
         $record = (new AuthPermission($this->pdo))
             ->eq('id', $id)
             ->find();

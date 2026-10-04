@@ -17,6 +17,9 @@ class JWSDecoder
 {
     protected JWSAdapterInterface $adapter;
 
+    /**
+     * @param array<string, mixed> $keys
+     */
     public function __construct(array $keys, ?JWSAdapterInterface $adapter = null)
     {
         $this->adapter = $adapter ?? new FirebaseAdapter($keys);

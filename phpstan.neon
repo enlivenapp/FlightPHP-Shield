@@ -1,0 +1,14 @@
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    level: 8
+    paths:
+        - src
+    excludePaths:
+        - src/Views
+        - src/Config/Routes.php
+        # Commands extend flight\commands\AbstractBaseCommand, which comes
+        # from a package this plugin does not require. Same exclusion as
+        # phpunit.xml until that dependency is declared.
+        - src/commands

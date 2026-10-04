@@ -15,12 +15,15 @@ use flight\Engine;
 class RegisterController
 {
     protected Engine $app;
+    /** @var array<string, mixed> */
     protected array $config;
 
     public function __construct(Engine $app, string $configPrepend)
     {
         $this->app = $app;
-        $this->config = $app->get($configPrepend) ?? [];
+        /** @var array<string, mixed> $config */
+        $config = $app->get($configPrepend) ?? [];
+        $this->config = $config;
     }
 
     public function showRegister(): void

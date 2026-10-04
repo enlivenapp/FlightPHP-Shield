@@ -13,7 +13,14 @@ use Enlivenapp\FlightShield\Result;
 
 interface AuthenticatorInterface
 {
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function attempt(array $credentials): Result;
+
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function check(array $credentials): Result;
     public function loggedIn(): bool;
     public function login(User $user): void;

@@ -19,8 +19,12 @@ use Enlivenapp\FlightShield\Result;
  */
 class Passwords
 {
+    /** @var array<string, mixed> */
     protected array $config;
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public function __construct(array $config = [])
     {
         $this->config = array_merge([
@@ -39,7 +43,7 @@ class Passwords
         ], $config);
     }
 
-    public function hash(string $password): string|false
+    public function hash(string $password): string
     {
         return password_hash($password, $this->config['algorithm'], $this->getHashOptions());
     }
@@ -78,6 +82,9 @@ class Passwords
         return (new Result())->setSuccess(true);
     }
 
+    /**
+     * @return array<string, int>
+     */
     protected function getHashOptions(): array
     {
         $algo = $this->config['algorithm'];

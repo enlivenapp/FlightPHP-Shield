@@ -204,6 +204,69 @@ class UserStatsTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // countNewByMonth - skipped (DATE_FORMAT is MySQL-only, tests use SQLite)
+    // newUsers* helpers
     // -----------------------------------------------------------------
+
+    #[Test]
+    public function newUsersByMonthBucketsRegistrations(): void
+    {
+        $user = TestHelper::createUser($this->pdo, 'a@test.com', 'pass1234', 'a', true);
+        $this->pdo->prepare('UPDATE users SET created_at = ? WHERE id = ?')
+            ->execute(['2026-04-15 10:00:00', $user->id]);
+
+        $result = $this->stats->newUsersByMonth(24);
+
+        $this->assertSame(1, $result['2026-04']);
+    }
+
+    #[Test]
+    public function newUsersThisMonthCountsOnlyTheCurrentMonth(): void
+    {
+        TestHelper::createUser($this->pdo, 'a@test.com', 'pass1234', 'a', true);
+        $old = TestHelper::createUser($this->pdo, 'b@test.com', 'pass1234', 'b', true);
+        $this->pdo->prepare('UPDATE users SET created_at = ? WHERE id = ?')
+            ->execute(['2020-01-01 00:00:00', $old->id]);
+
+        $this->assertSame(1, $this->stats->newUsersThisMonth());
+    }
+
+    #[Test]
+    public function newUsersLastMonthCountsThePreviousMonth(): void
+    {
+        $user = TestHelper::createUser($this->pdo, 'a@test.com', 'pass1234', 'a', true);
+        $lastMonth = (new \DateTimeImmutable('first day of last month'))->format('Y-m-d H:i:s');
+        $this->pdo->prepare('UPDATE users SET created_at = ? WHERE id = ?')
+            ->execute([$lastMonth, $user->id]);
+
+        $this->assertSame(1, $this->stats->newUsersLastMonth());
+    }
+
+    #[Test]
+    public function percentChangeIsAHundredWhenLastMonthWasEmpty(): void
+    {
+        TestHelper::createUser($this->pdo, 'a@test.com', 'pass1234', 'a', true);
+
+        $this->assertSame(100.0, $this->stats->newUsersPercentChange());
+    }
+
+    #[Test]
+    public function percentChangeIsZeroWithNoRegistrations(): void
+    {
+        $this->assertSame(0.0, $this->stats->newUsersPercentChange());
+    }
+
+    #[Test]
+    public function percentChangeComputesGrowthAgainstLastMonth(): void
+    {
+        $last = TestHelper::createUser($this->pdo, 'a@test.com', 'pass1234', 'a', true);
+        $lastMonth = (new \DateTimeImmutable('first day of last month'))->format('Y-m-d H:i:s');
+        $this->pdo->prepare('UPDATE users SET created_at = ? WHERE id = ?')
+            ->execute([$lastMonth, $last->id]);
+
+        TestHelper::createUser($this->pdo, 'b@test.com', 'pass1234', 'b', true);
+        TestHelper::createUser($this->pdo, 'c@test.com', 'pass1234', 'c', true);
+
+        // Two this month against one last month -> +100.0 percent.
+        $this->assertSame(100.0, $this->stats->newUsersPercentChange());
+    }
 }

@@ -67,7 +67,7 @@ class NothingPersonalValidator extends BaseValidator implements ValidatorInterfa
 
         if (! empty($email) && str_contains($email, '@')) {
             [$localPart, $domain] = explode('@', $email) + [1 => null];
-            $emailParts = $this->stripExplode($localPart);
+            $emailParts = $this->stripExplode($localPart ?? '');
             if ($domain !== null && $domain !== '') {
                 $emailParts[] = $domain;
             }
@@ -116,6 +116,9 @@ class NothingPersonalValidator extends BaseValidator implements ValidatorInterfa
         return $similarity < $maxSimilarity;
     }
 
+    /**
+     * @return list<string>
+     */
     protected function stripExplode(string $str): array
     {
         $stripped = preg_replace('/[\W_]+/', ' ', $str);

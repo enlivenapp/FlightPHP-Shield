@@ -27,7 +27,10 @@ class User extends \flight\ActiveRecord
     use HasHmacTokens;
     use Resettable;
 
-    public function __construct($pdo = null, array $config = [])
+    /**
+     * @param array<string, mixed> $config
+     */
+    public function __construct(mixed $pdo = null, array $config = [])
     {
         parent::__construct($pdo, 'users', $config);
     }
@@ -82,6 +85,9 @@ class User extends \flight\ActiveRecord
         return $user->isHydrated() ? $user : null;
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function findByCredentials(array $credentials): ?self
     {
         if (isset($credentials['email'])) {
@@ -107,11 +113,17 @@ class User extends \flight\ActiveRecord
         return null;
     }
 
+    /**
+     * @return array<int, self>
+     */
     public function findActive(): array
     {
         $user = new self($this->getDatabaseConnection());
 
-        return $user->eq('active', 1)->isNull('deleted_at')->findAll();
+        /** @var array<int, self> $active */
+        $active = $user->eq('active', 1)->isNull('deleted_at')->findAll();
+
+        return $active;
     }
 
     /**
@@ -252,12 +264,13 @@ class User extends \flight\ActiveRecord
     public function countNewByMonth(int $months = 12): array
     {
         $since = (new \DateTimeImmutable())->modify("-{$months} months")->format('Y-m-d');
+        $month = $this->monthExpression();
 
         $results = (new self($this->getDatabaseConnection()))
-            ->select("DATE_FORMAT(created_at, '%Y-%m') AS month", 'COUNT(*) AS cnt')
+            ->select("{$month} AS month", 'COUNT(*) AS cnt')
             ->isNull('deleted_at')
             ->gte('created_at', $since)
-            ->group("DATE_FORMAT(created_at, '%Y-%m')")
+            ->group($month)
             ->order('month ASC')
             ->findAll();
 
@@ -266,6 +279,40 @@ class User extends \flight\ActiveRecord
             $data[$row->month] = (int) $row->cnt;
         }
         return $data;
+    }
+
+    /**
+     * The SQL expression that renders created_at as 'YYYY-MM'.
+     *
+     * MySQL/MariaDB and SQLite do not share a date-format function, and the
+     * tests run on SQLite while the app runs on MySQL/MariaDB. Anything that
+     * is not SQLite keeps the original MySQL expression.
+     */
+    protected function monthExpression(): string
+    {
+        return match ($this->databaseDriver()) {
+            'sqlite', 'sqlite2' => "strftime('%Y-%m', created_at)",
+            default             => "DATE_FORMAT(created_at, '%Y-%m')",
+        };
+    }
+
+    /**
+     * The PDO driver name behind this model.
+     *
+     * getDatabaseConnection() hands back either a raw PDO or the active
+     * record PdoAdapter that wraps one.
+     */
+    protected function databaseDriver(): string
+    {
+        $connection = $this->getDatabaseConnection();
+
+        if (! $connection instanceof \PDO && method_exists($connection, 'getConnection')) {
+            $connection = $connection->getConnection();
+        }
+
+        return $connection instanceof \PDO
+            ? (string) $connection->getAttribute(\PDO::ATTR_DRIVER_NAME)
+            : '';
     }
 
     /**

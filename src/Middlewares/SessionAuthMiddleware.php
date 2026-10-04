@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace Enlivenapp\FlightShield\Middlewares;
 
 use Enlivenapp\FlightShield\Authentication\Actions\Email2FA;
+use Enlivenapp\FlightShield\Authentication\Authenticators\Session;
 use flight\Engine;
 
 class SessionAuthMiddleware
@@ -32,7 +33,7 @@ class SessionAuthMiddleware
             // Users mid-action (2FA / activation) are directed to their
             // action page instead of being bounced back to login.
             $authenticator = $auth->getAuthenticator();
-            if ($authenticator->isPending()) {
+            if ($authenticator instanceof Session && $authenticator->isPending()) {
                 $action = $authenticator->getAction();
                 if ($action instanceof Email2FA) {
                     $this->app->redirect('/auth/2fa');

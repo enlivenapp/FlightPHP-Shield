@@ -12,6 +12,9 @@ namespace Enlivenapp\FlightShield\Authentication\JWT\Exceptions;
 
 use Enlivenapp\FlightShield\Exceptions\ValidationException;
 
+/**
+ * @phpstan-consistent-constructor
+ */
 class InvalidTokenException extends ValidationException
 {
     public const INVALID_TOKEN      = 1;

@@ -20,12 +20,15 @@ use flight\Engine;
 class MagicLinkController
 {
     protected Engine $app;
+    /** @var array<string, mixed> */
     protected array $config;
 
     public function __construct(Engine $app, string $configPrepend)
     {
         $this->app = $app;
-        $this->config = $app->get($configPrepend) ?? [];
+        /** @var array<string, mixed> $config */
+        $config = $app->get($configPrepend) ?? [];
+        $this->config = $config;
     }
 
     public function showLoginForm(): void
@@ -52,7 +55,6 @@ class MagicLinkController
 
         $email = trim($this->app->request()->data->email ?? '');
 
-        /** @var UserRepository $userRepo */
         $userModel = new User(\Flight::db());
         $user = $userModel->findByCredentials(['email' => $email]);
 
@@ -61,7 +63,6 @@ class MagicLinkController
             return;
         }
 
-        /** @var UserIdentityRepository $identityRepo */
         $identityModel = new UserIdentity(\Flight::db());
 
         // Delete previous magic link identities
@@ -117,7 +118,6 @@ class MagicLinkController
 
         $token = $this->app->request()->query->token ?? '';
 
-        /** @var UserIdentityRepository $identityRepo */
         $identityModel = new UserIdentity(\Flight::db());
         $identity = $identityModel->getIdentityBySecret(UserIdentity::TYPE_MAGIC_LINK, hash('sha256', $token));
 
@@ -137,7 +137,6 @@ class MagicLinkController
             return;
         }
 
-        /** @var UserRepository $userRepo */
         $userModel = new User(\Flight::db());
         $user = $userModel->findById($identity->user_id);
 

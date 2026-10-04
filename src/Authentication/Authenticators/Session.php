@@ -12,13 +12,13 @@ namespace Enlivenapp\FlightShield\Authentication\Authenticators;
 
 use Enlivenapp\FlightShield\Authentication\Actions\ConditionalActionInterface;
 use Enlivenapp\FlightShield\Authentication\AuthenticatorInterface;
-use Enlivenapp\FlightShield\Models\Login;
 use Enlivenapp\FlightShield\Models\RememberToken;
 use Enlivenapp\FlightShield\Models\User;
 use Enlivenapp\FlightShield\Models\UserIdentity;
 use Enlivenapp\FlightShield\Exceptions\AuthenticationException;
 use Enlivenapp\FlightShield\Passwords\Passwords;
 use Enlivenapp\FlightShield\Result;
+use Enlivenapp\FlightShield\Services\CredentialVerifier;
 use Enlivenapp\FlightSessions\SessionManager;
 use flight\Engine;
 
@@ -29,6 +29,10 @@ class Session implements AuthenticatorInterface
     public const STATE_ANONYMOUS = 1;
     public const STATE_PENDING   = 2;
     public const STATE_LOGGED_IN = 3;
+
+    // Result code for a correct password on an account that is not activated.
+    // The login controller forwards this to the activation page.
+    public const ACCOUNT_NOT_ACTIVATED = 'not_activated';
 
     // Identity type constants (used by actions)
     public const ID_TYPE_EMAIL_PASSWORD = 'email_password';
@@ -41,19 +45,25 @@ class Session implements AuthenticatorInterface
     public const PENDING_LOGIN_METHOD  = 'auth_action_login_method';
 
     protected Engine $app;
+    /** @var array<string, mixed> */
     protected array $config;
     protected ?User $user = null;
     protected int $userState = self::STATE_UNKNOWN;
     protected Passwords $passwords;
+    protected CredentialVerifier $credentialVerifier;
 
     /** @var SessionManager|null Resolved lazily via sessions() */
     protected ?SessionManager $store = null;
 
-    public function __construct(Engine $app, array $config)
+    /**
+     * @param array<string, mixed> $config
+     */
+    public function __construct(Engine $app, array $config, ?CredentialVerifier $credentialVerifier = null)
     {
         $this->app = $app;
         $this->config = $config;
         $this->passwords = new Passwords($config['passwords'] ?? []);
+        $this->credentialVerifier = $credentialVerifier ?? new CredentialVerifier($app, $config);
 
         $this->ensureSession();
     }
@@ -62,6 +72,9 @@ class Session implements AuthenticatorInterface
     // AuthenticatorInterface
     // -----------------------------------------------------------------
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function attempt(array $credentials): Result
     {
         $result = $this->check($credentials);
@@ -85,14 +98,15 @@ class Session implements AuthenticatorInterface
             $this->recordLogin($credentials, false, $user->id);
             return (new Result())
                 ->setSuccess(false)
-                ->setReason('Invalid credentials.');
+                ->setReason('This account is not activated yet.')
+                ->setExtraInfo(self::ACCOUNT_NOT_ACTIVATED);
         }
 
         // Rehash password if needed
         $identityRepo = $this->getIdentityModel();
         $identity = $identityRepo->getEmailIdentity($user);
 
-        if ($identity && $this->passwords->needsRehash($identity->secret2)) {
+        if ($identity && $identity->secret2 !== null && $this->passwords->needsRehash($identity->secret2)) {
             $identity->secret2 = $this->passwords->hash($credentials['password']);
             $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
             // Explicit dirty(): typed property assignment bypasses __set().
@@ -117,12 +131,19 @@ class Session implements AuthenticatorInterface
         return $result;
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function check(array $credentials): Result
     {
         $userRepo = $this->getUserModel();
         $user = $userRepo->findByCredentials($credentials);
 
         if ($user === null) {
+            // Burn the same time as a real check, so an unknown email cannot
+            // be told apart from a wrong password by how long the answer took.
+            $this->credentialVerifier->burnTiming((string) ($credentials['password'] ?? ''));
+
             return (new Result())
                 ->setSuccess(false)
                 ->setReason('Invalid credentials.');
@@ -134,16 +155,7 @@ class Session implements AuthenticatorInterface
                 ->setReason('Password is required.');
         }
 
-        $identityRepo = $this->getIdentityModel();
-        $identity = $identityRepo->getEmailIdentity($user);
-
-        if ($identity === null || $identity->secret2 === null) {
-            return (new Result())
-                ->setSuccess(false)
-                ->setReason('No password identity found.');
-        }
-
-        if (! $this->passwords->verify($credentials['password'], $identity->secret2)) {
+        if (! $this->credentialVerifier->passwordMatches($user, (string) $credentials['password'])) {
             return (new Result())
                 ->setSuccess(false)
                 ->setReason('Invalid credentials.');
@@ -516,27 +528,17 @@ class Session implements AuthenticatorInterface
         }
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     protected function recordLogin(array $credentials, bool $success, ?int $userId = null): void
     {
-        $recordLevel = $this->config['record_login_attempt'] ?? 'none';
-
-        if ($recordLevel === 'none') {
-            return;
-        }
-
-        if ($recordLevel === 'failure' && $success) {
-            return;
-        }
-
-        $login = new Login(\Flight::db());
-        $login->id_type    = isset($credentials['email']) ? 'email_password' : 'username';
-        $login->identifier = $credentials['email'] ?? $credentials['username'] ?? 'unknown';
-        $login->success    = $success;
-        $login->user_id    = $userId;
-        $login->ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-        $login->user_agent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-        $login->date       = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-        $login->insert();
+        $this->credentialVerifier->recordAttempt(
+            $credentials['email'] ?? $credentials['username'] ?? 'unknown',
+            isset($credentials['email']) ? self::ID_TYPE_EMAIL_PASSWORD : 'username',
+            $success,
+            $userId
+        );
     }
 
     protected function getUserModel(): User

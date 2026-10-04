@@ -1,0 +1,200 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  phpunit:
+    name: PHPUnit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, mbstring, openssl
+          coverage: none
+          tools: composer
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run PHPUnit
+        run: vendor/bin/phpunit --no-coverage | tee phpunit.out
+
+      - name: Build badge
+        if: always()
+        run: python3 .github/badges/make.py phpunit phpunit.out phpunit.json
+
+      - name: Upload badge
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-phpunit
+          path: phpunit.json
+          if-no-files-found: ignore
+
+  phpstan:
+    name: PHPStan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, openssl
+          coverage: none
+          tools: composer
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --error-format=json | tee phpstan.out
+
+      - name: Build badge
+        if: always()
+        run: python3 .github/badges/make.py phpstan phpstan.out phpstan.json
+
+      - name: Upload badge
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-phpstan
+          path: phpstan.json
+          if-no-files-found: ignore
+
+  psalm:
+    name: Psalm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, openssl
+          coverage: none
+          tools: composer
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run Psalm
+        run: vendor/bin/psalm --no-progress --taint-analysis --output-format=json | tee psalm.out
+
+      - name: Build badge
+        if: always()
+        run: python3 .github/badges/make.py psalm psalm.out psalm.json
+
+      - name: Upload badge
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-psalm
+          path: psalm.json
+          if-no-files-found: ignore
+
+  infection:
+    name: Infection
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, mbstring, openssl
+          coverage: pcov
+          tools: composer
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run Infection
+        run: vendor/bin/infection --threads=max --logger-summary-json=infection-stats.json
+
+      - name: Build badge
+        if: always()
+        run: python3 .github/badges/make.py infection infection-stats.json infection.json
+
+      - name: Upload badge
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-infection
+          path: infection.json
+          if-no-files-found: ignore
+
+  badges:
+    name: Publish badges
+    needs: [phpunit, phpstan, psalm, infection]
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Collect badge files
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          path: badges
+          merge-multiple: true
+
+      - name: Push to the badges branch
+        working-directory: badges
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git init -q -b badges
+          git add -A
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -qm 'Update test badges'
+          git push -q --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges

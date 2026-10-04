@@ -10,6 +10,9 @@ declare(strict_types=1);
 
 namespace Enlivenapp\FlightShield\Exceptions;
 
+/**
+ * @phpstan-consistent-constructor
+ */
 class AuthenticationException extends RuntimeException
 {
     protected int $httpCode = 403;

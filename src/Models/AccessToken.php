@@ -13,6 +13,8 @@ namespace Enlivenapp\FlightShield\Models;
 /**
  * Represents an access token or HMAC token.
  * Wraps a UserIdentity with token-specific convenience methods.
+ *
+ * @phpstan-consistent-constructor
  */
 class AccessToken
 {
@@ -51,7 +53,7 @@ class AccessToken
         if ($identity->extra !== null) {
             $decoded = json_decode($identity->extra, true);
             if (is_array($decoded)) {
-                $token->scopes = $decoded;
+                $token->scopes = array_values(array_filter($decoded, 'is_string'));
             }
         }
 
@@ -90,6 +92,9 @@ class AccessToken
         return $this->scopes;
     }
 
+    /**
+     * @param list<string> $scopes
+     */
     public function setScopes(array $scopes): void
     {
         $this->scopes = $scopes;

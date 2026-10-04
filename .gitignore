@@ -1,4 +1,6 @@
+/infection-summary.log
+/infection.log
 vendor/
 .phpunit.cache/
-composer.lock
+
 /TO-ADD.md

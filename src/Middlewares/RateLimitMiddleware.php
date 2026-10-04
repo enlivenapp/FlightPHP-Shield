@@ -30,10 +30,18 @@ use flight\Engine;
 class RateLimitMiddleware
 {
     protected Engine $app;
+    protected ?string $countedIdType;
 
-    public function __construct(Engine $app)
+    /**
+     * @param string|null $countedIdType When set, the limiter counts the
+     *   auth_logins rows of this id_type for the client IP, sends included,
+     *   and leaves the token-login table alone. The login, 2FA and magic-link
+     *   routes pass nothing and keep counting failures across both tables.
+     */
+    public function __construct(Engine $app, ?string $countedIdType = null)
     {
         $this->app = $app;
+        $this->countedIdType = $countedIdType;
     }
 
     public function before(): void
@@ -56,21 +64,32 @@ class RateLimitMiddleware
         $loginModel = new Login($db);
         $tokenModel = new TokenLogin($db);
 
-        // Count failures across both session and token login tables
-        $recentFailures = $loginModel->countRecentFailuresByIp($ip, $since)
-                        + $tokenModel->countRecentFailuresByIp($ip, $since);
+        if ($this->countedIdType !== null) {
+            // Endpoint counter: every row of this id_type counts, sends included.
+            $hits = $loginModel->countRecentByIpAndType($ip, $this->countedIdType, $since);
 
-        if ($recentFailures < $maxAttempts) {
-            return;
-        }
+            if ($hits < $maxAttempts) {
+                return;
+            }
 
-        // Threshold reached - check if the most recent failure is still within the lockout window
-        $loginLatest = $loginModel->latestFailureDateByIp($ip);
-        $tokenLatest = $tokenModel->latestFailureDateByIp($ip);
+            $latestDate = $loginModel->latestDateByIpAndType($ip, $this->countedIdType);
+        } else {
+            // Count failures across both session and token login tables
+            $recentFailures = $loginModel->countRecentFailuresByIp($ip, $since)
+                            + $tokenModel->countRecentFailuresByIp($ip, $since);
 
-        $latestDate = $loginLatest;
-        if ($tokenLatest !== null && ($latestDate === null || $tokenLatest > $latestDate)) {
-            $latestDate = $tokenLatest;
+            if ($recentFailures < $maxAttempts) {
+                return;
+            }
+
+            // Threshold reached - check if the most recent failure is still within the lockout window
+            $loginLatest = $loginModel->latestFailureDateByIp($ip);
+            $tokenLatest = $tokenModel->latestFailureDateByIp($ip);
+
+            $latestDate = $loginLatest;
+            if ($tokenLatest !== null && ($latestDate === null || $tokenLatest > $latestDate)) {
+                $latestDate = $tokenLatest;
+            }
         }
 
         if ($latestDate === null) {
@@ -81,7 +100,7 @@ class RateLimitMiddleware
 
         if ($latestDate >= $lockoutCutoff) {
             header('Retry-After: ' . ($lockoutMinutes * 60));
-            $this->app->halt(429, json_encode([
+            $this->app->halt(429, (string) json_encode([
                 'error' => 'Too many attempts. Please try again later.',
             ]));
         }

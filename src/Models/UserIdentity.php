@@ -22,7 +22,10 @@ class UserIdentity extends \flight\ActiveRecord
     public const TYPE_ACCESS_TOKEN   = 'access_token';
     public const TYPE_HMAC_TOKEN     = 'hmac_sha256';
 
-    public function __construct($pdo = null, array $config = [])
+    /**
+     * @param array<string, mixed> $config
+     */
+    public function __construct(mixed $pdo = null, array $config = [])
     {
         parent::__construct($pdo, 'auth_identities', $config);
     }
@@ -68,6 +71,9 @@ class UserIdentity extends \flight\ActiveRecord
         return $identity->isHydrated() ? $identity : null;
     }
 
+    /**
+     * @param array<string, mixed> $credentials
+     */
     public function createEmailIdentity(User $user, array $credentials): self
     {
         $identity = new self($this->getDatabaseConnection());
@@ -86,6 +92,9 @@ class UserIdentity extends \flight\ActiveRecord
     // Access Tokens (from UserIdentityRepository)
     // -----------------------------------------------------------------
 
+    /**
+     * @param list<string> $scopes
+     */
     public function generateAccessToken(User $user, string $name, array $scopes, ?\DateTimeImmutable $expiresAt): AccessToken
     {
         $rawToken = bin2hex(random_bytes(32));
@@ -95,7 +104,7 @@ class UserIdentity extends \flight\ActiveRecord
         $identity->type       = self::TYPE_ACCESS_TOKEN;
         $identity->name       = $name;
         $identity->secret     = hash('sha256', $rawToken);
-        $identity->extra      = json_encode($scopes);
+        $identity->extra      = json_encode($scopes) ?: null;
         $identity->expires    = $expiresAt?->format('Y-m-d H:i:s');
         $identity->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
         $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
@@ -139,9 +148,13 @@ class UserIdentity extends \flight\ActiveRecord
         return $identity->isHydrated() ? AccessToken::fromIdentity($identity) : null;
     }
 
+    /**
+     * @return array<int, AccessToken>
+     */
     public function getAllAccessTokens(User $user): array
     {
         $identity = new self($this->getDatabaseConnection());
+        /** @var array<int, self> $identities */
         $identities = $identity->eq('user_id', $user->id)
                                ->eq('type', self::TYPE_ACCESS_TOKEN)
                                ->findAll();
@@ -178,6 +191,9 @@ class UserIdentity extends \flight\ActiveRecord
     // HMAC Tokens (from UserIdentityRepository)
     // -----------------------------------------------------------------
 
+    /**
+     * @param list<string> $scopes
+     */
     public function generateHmacToken(User $user, string $name, array $scopes, ?\DateTimeImmutable $expiresAt, ?HmacEncrypter $encrypter = null): AccessToken
     {
         $key       = bin2hex(random_bytes(16));
@@ -189,7 +205,7 @@ class UserIdentity extends \flight\ActiveRecord
         $identity->name       = $name;
         $identity->secret     = $key;
         $identity->secret2    = $encrypter !== null ? $encrypter->encrypt($secretKey) : $secretKey;
-        $identity->extra      = json_encode($scopes);
+        $identity->extra      = json_encode($scopes) ?: null;
         $identity->expires    = $expiresAt?->format('Y-m-d H:i:s');
         $identity->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
         $identity->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
@@ -233,9 +249,13 @@ class UserIdentity extends \flight\ActiveRecord
         return $identity->isHydrated() ? AccessToken::fromIdentity($identity) : null;
     }
 
+    /**
+     * @return array<int, AccessToken>
+     */
     public function getAllHmacTokens(User $user): array
     {
         $identity = new self($this->getDatabaseConnection());
+        /** @var array<int, self> $identities */
         $identities = $identity->eq('user_id', $user->id)
                                ->eq('type', self::TYPE_HMAC_TOKEN)
                                ->findAll();
@@ -272,6 +292,9 @@ class UserIdentity extends \flight\ActiveRecord
     // Action Identities (2FA, Email Activation, Magic Link)
     // -----------------------------------------------------------------
 
+    /**
+     * @param array<string, mixed> $data
+     */
     public function createCodeIdentity(User $user, array $data, callable $generator): string
     {
         $code = $generator();
@@ -327,11 +350,17 @@ class UserIdentity extends \flight\ActiveRecord
         }
     }
 
+    /**
+     * @return array<int, self>
+     */
     public function getIdentitiesByUser(User $user): array
     {
         $identity = new self($this->getDatabaseConnection());
 
-        return $identity->eq('user_id', $user->id)->findAll();
+        /** @var array<int, self> $identities */
+        $identities = $identity->eq('user_id', $user->id)->findAll();
+
+        return $identities;
     }
 
     // -----------------------------------------------------------------

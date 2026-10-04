@@ -27,7 +27,6 @@ use PHPUnit\Framework\TestCase;
 
 #[CoversClass(AuthenticationException::class)]
 #[CoversClass(AuthorizationException::class)]
-#[CoversClass(BaseException::class)]
 #[CoversClass(GroupException::class)]
 #[CoversClass(InvalidArgumentException::class)]
 #[CoversClass(LogicException::class)]

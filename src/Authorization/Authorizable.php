@@ -22,20 +22,27 @@ use Enlivenapp\FlightShield\Models\PermissionUser;
  */
 trait Authorizable
 {
+    /** @var array<int, string>|null */
     protected ?array $groupsCache = null;
+    /** @var list<string>|null */
     protected ?array $permissionsCache = null;
+    /** @var list<string>|null */
     protected ?array $deniedCache = null;
 
     // -----------------------------------------------------------------
     // Groups
     // -----------------------------------------------------------------
 
+    /**
+     * @return array<int, string>
+     */
     public function getGroups(): array
     {
         if ($this->groupsCache !== null) {
             return $this->groupsCache;
         }
 
+        /** @var array<int, GroupUser> $records */
         $records = (new GroupUser(\Flight::db()))
             ->eq('user_id', $this->id)
             ->findAll();
@@ -45,7 +52,7 @@ trait Authorizable
             $records
         );
 
-        return $this->groupsCache;
+        return $this->groupsCache ?? [];
     }
 
     public function addGroup(string $group): static
@@ -80,6 +87,9 @@ trait Authorizable
         return $this;
     }
 
+    /**
+     * @param list<string> $groups
+     */
     public function syncGroups(array $groups): static
     {
         $existing = (new GroupUser(\Flight::db()))
@@ -119,16 +129,22 @@ trait Authorizable
     // Permissions
     // -----------------------------------------------------------------
 
+    /**
+     * @return list<string>
+     */
     public function getPermissions(): array
     {
         $this->hydratePermissions();
-        return $this->permissionsCache;
+        return $this->permissionsCache ?? [];
     }
 
+    /**
+     * @return list<string>
+     */
     public function getDeniedPermissions(): array
     {
         $this->hydratePermissions();
-        return $this->deniedCache;
+        return $this->deniedCache ?? [];
     }
 
     protected function hydratePermissions(): void
@@ -137,6 +153,7 @@ trait Authorizable
             return;
         }
 
+        /** @var array<int, PermissionUser> $records */
         $records = (new PermissionUser(\Flight::db()))
             ->eq('user_id', $this->id)
             ->findAll();
@@ -155,6 +172,7 @@ trait Authorizable
 
     public function addPermission(string $permission, bool $deny = false): static
     {
+        /** @var PermissionUser $existing */
         $existing = (new PermissionUser(\Flight::db()))
             ->eq('user_id', $this->id)
             ->eq('permission', $permission)
@@ -204,8 +222,8 @@ trait Authorizable
     /**
      * Sync user permissions.
      *
-     * @param array $grants  Permission aliases to grant
-     * @param array $denies  Permission aliases to deny
+     * @param list<string> $grants Permission aliases to grant
+     * @param list<string> $denies Permission aliases to deny
      */
     public function syncPermissions(array $grants, array $denies = []): static
     {
@@ -291,22 +309,27 @@ trait Authorizable
      * Load a group's permissions from the auth_group_permissions table.
      * Results are cached per group for the lifetime of the request.
      */
+    /**
+     * @return list<string>
+     */
     protected function getGroupPermissionsFromDb(string $group): array
     {
+        /** @var array<string, list<string>> $cache */
         static $cache = [];
 
         if (isset($cache[$group])) {
             return $cache[$group];
         }
 
+        /** @var array<int, AuthGroupPermission> $records */
         $records = (new AuthGroupPermission(\Flight::db()))
             ->eq('group_alias', $group)
             ->findAll();
 
-        $cache[$group] = array_map(
+        $cache[$group] = array_values(array_map(
             fn(AuthGroupPermission $r) => $r->permission_alias,
             $records
-        );
+        ));
 
         return $cache[$group];
     }

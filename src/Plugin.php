@@ -15,6 +15,9 @@ use flight\net\Router;
 
 class Plugin
 {
+    /**
+     * @param array<string, mixed> $config
+     */
     public function register(Engine $app, Router $router, array $config = []): void
     {
         // Enforce HTTPS policy
@@ -38,6 +41,9 @@ class Plugin
      * force_https not set → throw (developer must make an explicit choice)
      * force_https = true  → throw if request is not HTTPS
      * force_https = false → allow HTTP (dev/test environments)
+     */
+    /**
+     * @param array<string, mixed> $config
      */
     protected function enforceHttps(Engine $app, array $config): void
     {
